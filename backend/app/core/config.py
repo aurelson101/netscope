@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     smtp_use_ssl: bool = False
     smtp_timeout: int = 15
     smtp_senders: str = ""
+    snmp_default_version: str = ""
+    snmpv3_username: str = ""
+    snmpv3_security_level: str = "authPriv"
+    snmpv3_auth_protocol: str = "SHA"
+    snmpv3_auth_password: str = ""
+    snmpv3_privacy_protocol: str = "AES"
+    snmpv3_privacy_password: str = ""
+    snmpv2_community: str = ""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
@@ -30,6 +38,13 @@ class Settings(BaseSettings):
     @property
     def smtp_sender_list(self)->list[str]:
         return [x.strip() for x in self.smtp_senders.split(",") if x.strip()]
+
+    @property
+    def snmp_default_credential(self)->dict|None:
+        version=self.snmp_default_version.strip().lower()
+        if version in ("2","2c","v2c") and self.snmpv2_community:return {"version":"2c","community":self.snmpv2_community}
+        if version in ("3","v3") and self.snmpv3_username:return {"version":"3","username":self.snmpv3_username,"security_level":self.snmpv3_security_level,"auth_protocol":self.snmpv3_auth_protocol,"auth_password":self.snmpv3_auth_password or None,"privacy_protocol":self.snmpv3_privacy_protocol,"privacy_password":self.snmpv3_privacy_password or None}
+        return None
 
 
 @lru_cache

@@ -26,6 +26,8 @@ async def init_db():
             db.add_all([ScanProfile(name="Inventaire rapide",modules=["icmp","arp","nmap","dns"],options={"nmap":{"profile":"fast"}}),ScanProfile(name="Inventaire standard",modules=["icmp","arp","nmap","dns"],options={"nmap":{"profile":"standard"}}),ScanProfile(name="Découverte passive",modules=["dns"],options={})])
         if not await db.scalar(select(ScanProfile.id).where(ScanProfile.name == "Infrastructure SNMPv3")):
             db.add(ScanProfile(name="Infrastructure SNMPv3",modules=["nmap","snmp"],options={"nmap":{"profile":"fast"}}))
+        if not await db.scalar(select(ScanProfile.id).where(ScanProfile.name == "Infrastructure SNMPv2c")):
+            db.add(ScanProfile(name="Infrastructure SNMPv2c",modules=["nmap","snmp"],options={"nmap":{"profile":"fast"}}))
         if not await db.scalar(select(DeviceRole.id).limit(1)):
             db.add_all([DeviceRole(name="Poste utilisateur",slug="workstation",color="3b82f6"),DeviceRole(name="Serveur",slug="server",color="22c55e"),DeviceRole(name="Commutateur",slug="switch",color="8b5cf6"),DeviceRole(name="Routeur",slug="router",color="f59e0b"),DeviceRole(name="Pare-feu",slug="firewall",color="ef4444")])
         prefixes=(await db.execute(select(IpamPrefix))).scalars().all()

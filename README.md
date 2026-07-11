@@ -141,6 +141,33 @@ SNMPv3 sert à collecter les interfaces, VLAN, tables ARP/MAC et voisins LLDP/CD
 
 Les secrets SNMP sont chiffrés avec `MASTER_ENCRYPTION_KEY` et ne sont jamais retournés par l’API. Préférez `authPriv`, SHA et AES. N’utilisez pas SNMPv1/v2c sur un réseau sensible.
 
+#### Identifiant SNMP par défaut dans `.env`
+
+La méthode recommandée consiste à créer les identifiants chiffrés dans l’API, ce qui permet d’utiliser des accès différents par site. Pour un petit réseau, un identifiant par défaut facultatif peut être défini dans `.env` :
+
+```dotenv
+SNMP_DEFAULT_VERSION=3
+SNMPV3_USERNAME=netscope
+SNMPV3_SECURITY_LEVEL=authPriv
+SNMPV3_AUTH_PROTOCOL=SHA
+SNMPV3_AUTH_PASSWORD=mot-de-passe-authentification
+SNMPV3_PRIVACY_PROTOCOL=AES
+SNMPV3_PRIVACY_PASSWORD=mot-de-passe-chiffrement
+```
+
+Laissez `SNMP_DEFAULT_VERSION` vide pour obliger l’utilisateur à sélectionner un identifiant chiffré à chaque scan.
+
+#### Compatibilité SNMPv2c
+
+NetScope prend aussi en charge SNMPv2c. Vous pouvez créer une communauté chiffrée au repos avec `POST /api/v1/credentials/snmpv2c`, ou configurer un défaut :
+
+```dotenv
+SNMP_DEFAULT_VERSION=2c
+SNMPV2_COMMUNITY=changez-cette-communaute
+```
+
+SNMPv2c ne chiffre ni la communauté ni les données sur le réseau. Limitez-le à un VLAN d’administration isolé et filtré par pare-feu. SNMPv1 n’est pas pris en charge.
+
 ## 5. Commandes utiles
 
 ### Configurer l’envoi SMTP des rapports
