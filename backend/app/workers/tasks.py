@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 from datetime import datetime, timezone
 from celery import Celery
 from celery.signals import after_setup_logger
@@ -20,6 +21,14 @@ configure_logging();logger=logging.getLogger("netscope.worker")
 celery=Celery("netscope",broker=settings.redis_url,backend=settings.redis_url)
 celery.conf.task_routes={"execute_scan":{"queue":"scanner"}}
 plugins={p.name:p for p in [IcmpPlugin(),ArpPlugin(),NmapPlugin(),DNSPlugin(),SnmpPlugin()]}
+
+def module_targets(module:str,target:str,discovered:set[str])->list[str]:
+    if module in ("dns","snmp") and "/" in target:
+        if discovered:return sorted(discovered,key=lambda value:(ipaddress.ip_address(value).version,int(ipaddress.ip_address(value))))
+        network=ipaddress.ip_network(target,strict=False)
+        if network.num_addresses==1:return [str(network.network_address)]
+        return []
+    return [target]
 
 
 @after_setup_logger.connect(weak=False)
@@ -49,9 +58,9 @@ async def _execute(job_id:str):
                     default=settings.snmp_default_credential
                     if not credential and not default:raise ValueError("Aucun identifiant SNMP affecté au profil et aucun défaut configuré dans .env")
                     options["credential"]=decrypt_secret(credential.encrypted_secret) if credential else default
-                targets=[job.target]
+                targets=module_targets(module,job.target,discovered_targets)
+                if module=="snmp" and not targets:raise ValueError("Aucun hôte actif découvert à interroger en SNMP")
                 if module=="dns" and "/" in job.target:
-                    targets=sorted(discovered_targets)
                     prefixes=(await db.execute(select(IpamPrefix))).scalars().all()
                     matching=next((p for p in prefixes if p.prefix==job.target),None)
                     if matching and matching.dns_servers:options["servers"]=matching.dns_servers

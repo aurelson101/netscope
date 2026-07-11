@@ -1,5 +1,7 @@
 # NetScope
 
+Version actuelle : **0.0.1** — voir le [changelog](CHANGELOG.md) et la [feuille de route](docs/ROADMAP.md).
+
 NetScope est une application web auto-hébergée pour découvrir, inventorier et documenter un réseau. Elle réunit l’inventaire des équipements, les scans, l’IPAM, les VLAN, les sites Datacenter, les services, SNMPv3 et les relations LLDP/CDP.
 
 ![Tableau de bord NetScope](netscope.png)

@@ -82,7 +82,7 @@ export function Layout({
           <Link href="#/settings" icon={Settings} label="Paramètres" />
         </nav>
         <div className="asideFoot">
-          <span>NetScope v0.1.0</span>
+          <span>NetScope v0.0.1</span>
         </div>
       </aside>
       <main>
