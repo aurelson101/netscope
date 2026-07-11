@@ -1,0 +1,243 @@
+import { FormEvent, useEffect, useState } from "react";
+import { KeyRound, LockKeyhole, ServerCog, ShieldCheck } from "lucide-react";
+import { api } from "../lib/api";
+import { Layout } from "../components/Layout";
+export function Settings() {
+  const [prefixes, setPrefixes] = useState<any[]>([]),
+    [mfa, setMfa] = useState<any>({ enabled: false }),
+    [setup, setSetup] = useState<any>(),
+    [message, setMessage] = useState("");
+  const load = () => {
+    api<any[]>("/ipam/prefixes").then(setPrefixes);
+    api("/auth/mfa/status").then(setMfa);
+  };
+  useEffect(load, []);
+  async function saveDns(e: FormEvent<HTMLFormElement>, id: string) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const f = new FormData(form),
+      dns = String(f.get("dns"))
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+    try {
+      await api("/ipam/prefixes/" + id, {
+        method: "PATCH",
+        body: JSON.stringify({ dns_servers: dns }),
+      });
+      setMessage("Serveurs DNS enregistrés");
+      load();
+    } catch (x: any) {
+      setMessage(x.message);
+    }
+  }
+  async function testDns(e: React.MouseEvent<HTMLButtonElement>) {
+    const form = e.currentTarget.form;
+    if (!form) return;
+    const f = new FormData(form),
+      server = String(f.get("dns")).split(",")[0]?.trim(),
+      ip = String(f.get("test_ip")).trim();
+    if (!server || !ip) {
+      setMessage("Renseignez un DNS et une IP à tester");
+      return;
+    }
+    const result: any = await api("/dns/test", {
+      method: "POST",
+      body: JSON.stringify({ server, ip_address: ip }),
+    });
+    setMessage(
+      result.success
+        ? `DNS OK : ${result.names.join(", ")} (${result.latency_ms} ms)`
+        : `Échec DNS : ${result.error}`,
+    );
+  }
+  async function startMfa() {
+    setSetup(await api("/auth/mfa/setup", { method: "POST" }));
+  }
+  async function confirm(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      await api("/auth/mfa/confirm", {
+        method: "POST",
+        body: JSON.stringify({ code: f.get("code") }),
+      });
+      setSetup(undefined);
+      setMessage("MFA activé");
+      load();
+    } catch (x: any) {
+      setMessage(x.message);
+    }
+  }
+  async function disable(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    try {
+      await api("/auth/mfa/disable", {
+        method: "POST",
+        body: JSON.stringify({ code: f.get("code") }),
+      });
+      setMessage("MFA désactivé");
+      load();
+    } catch (x: any) {
+      setMessage(x.message);
+    }
+  }
+  async function password(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const f = new FormData(form),
+      next = String(f.get("new_password")),
+      confirm = String(f.get("confirm_password"));
+    if (next !== confirm) {
+      setMessage("La confirmation du mot de passe ne correspond pas");
+      return;
+    }
+    try {
+      await api("/auth/password", {
+        method: "POST",
+        body: JSON.stringify({
+          current_password: f.get("current_password"),
+          new_password: next,
+        }),
+      });
+      form.reset();
+      setMessage("Mot de passe modifié avec succès");
+    } catch (x: any) {
+      setMessage(x.message);
+    }
+  }
+  return (
+    <Layout title="Paramètres">
+      <div className="settingsGrid">
+        <article className="panel formPanel">
+          <h3>
+            <ServerCog /> Résolution DNS
+          </h3>
+          <p className="hint">
+            Configurez les serveurs PTR internes puis vérifiez-les avant un
+            scan.
+          </p>
+          {prefixes.map((p) => (
+            <form key={p.id} onSubmit={(e) => saveDns(e, p.id)}>
+              <label>
+                {p.prefix} — {p.name}
+                <input
+                  name="dns"
+                  defaultValue={(p.dns_servers || []).join(", ")}
+                  placeholder="192.168.1.254, 192.168.1.1"
+                />
+              </label>
+              <label>
+                IP à résoudre pour le test
+                <input name="test_ip" placeholder="192.168.1.95" />
+              </label>
+              <div className="formActions">
+                <button type="button" className="button" onClick={testDns}>
+                  Tester le PTR
+                </button>
+                <button className="primary">Enregistrer</button>
+              </div>
+            </form>
+          ))}
+        </article>
+        <article className="panel formPanel">
+          <h3>
+            <ShieldCheck /> Authentification multifacteur
+          </h3>
+          <p className="hint">
+            État : <b>{mfa.enabled ? "Activé" : "Désactivé"}</b>.
+          </p>
+          {!mfa.enabled && !setup && (
+            <button className="primary" onClick={startMfa}>
+              <KeyRound />
+              Configurer le MFA
+            </button>
+          )}
+          {setup && (
+            <>
+              <div className="mfaSecret">
+                <small>Clé à saisir dans l’application</small>
+                <code>{setup.secret}</code>
+                <small>{setup.otpauth_uri}</small>
+              </div>
+              <CodeForm action={confirm} label="Confirmer et activer" />
+            </>
+          )}
+          {mfa.enabled && (
+            <CodeForm action={disable} label="Désactiver le MFA" />
+          )}
+        </article>
+        <article className="panel formPanel">
+          <h3>
+            <LockKeyhole /> Mot de passe
+          </h3>
+          <p className="hint">
+            12 caractères minimum avec majuscule, minuscule, chiffre et
+            caractère spécial.
+          </p>
+          <form onSubmit={password}>
+            <label>
+              Mot de passe actuel
+              <input
+                name="current_password"
+                type="password"
+                autoComplete="current-password"
+                required
+              />
+            </label>
+            <label>
+              Nouveau mot de passe
+              <input
+                name="new_password"
+                type="password"
+                minLength={12}
+                autoComplete="new-password"
+                required
+              />
+            </label>
+            <label>
+              Confirmation
+              <input
+                name="confirm_password"
+                type="password"
+                minLength={12}
+                autoComplete="new-password"
+                required
+              />
+            </label>
+            <button className="primary">Changer le mot de passe</button>
+          </form>
+        </article>
+      </div>
+      {message && (
+        <div className="panel" style={{ marginTop: 12 }}>
+          {message}
+        </div>
+      )}
+    </Layout>
+  );
+}
+function CodeForm({
+  action,
+  label,
+}: {
+  action: (e: FormEvent<HTMLFormElement>) => void;
+  label: string;
+}) {
+  return (
+    <form onSubmit={action}>
+      <label>
+        Code à 6 chiffres
+        <input
+          name="code"
+          inputMode="numeric"
+          pattern="[0-9]{6}"
+          maxLength={6}
+          required
+        />
+      </label>
+      <button className="primary">{label}</button>
+    </form>
+  );
+}

@@ -1,0 +1,79 @@
+name: netscope
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment: {POSTGRES_DB: netscope, POSTGRES_USER: netscope, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-netscope-dev-password}"}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck: {test: [CMD-SHELL, "pg_isready -U netscope"], interval: 5s, timeout: 3s, retries: 10}
+    restart: unless-stopped
+  redis:
+    image: redis:7.4-alpine
+    command: redis-server --appendonly yes
+    volumes: [redis-data:/data]
+    healthcheck: {test: [CMD, redis-cli, ping], interval: 5s, timeout: 3s, retries: 10}
+    restart: unless-stopped
+  backend-api:
+    build: ./backend
+    environment: &app-env
+      DATABASE_URL: postgresql+asyncpg://netscope:${POSTGRES_PASSWORD:-netscope-dev-password}@postgres/netscope
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-NetScope-Development-Secret-Key-2026-Change-Me}
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:-NetScope-Development-Master-Key-2026-Change-Me}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-NetScopeAdmin2026!}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      SMTP_TIMEOUT: ${SMTP_TIMEOUT:-15}
+      SMTP_SENDERS: ${SMTP_SENDERS:-}
+      SERVICE_NAME: netscope-api
+      LOG_FILE: /logs/netscope-api.log
+    volumes: ["./logs/api:/logs"]
+    security_opt: [no-new-privileges:true]
+    depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_healthy}}
+    healthcheck: {test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"], interval: 10s, timeout: 3s, retries: 10}
+    restart: unless-stopped
+  worker:
+    build: ./backend
+    command: celery -A app.workers.tasks.celery worker -Q default --loglevel=INFO
+    environment:
+      <<: *app-env
+      SERVICE_NAME: netscope-worker
+      LOG_FILE: /logs/netscope-worker.log
+    volumes: ["./logs/worker:/logs"]
+    security_opt: [no-new-privileges:true]
+    depends_on: {backend-api: {condition: service_healthy}}
+    restart: unless-stopped
+  scheduler:
+    build: ./backend
+    command: celery -A app.workers.tasks.celery beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule
+    environment:
+      <<: *app-env
+      SERVICE_NAME: netscope-scheduler
+      LOG_FILE: /logs/netscope-scheduler.log
+    volumes: ["./logs/scheduler:/logs"]
+    security_opt: [no-new-privileges:true]
+    depends_on: {backend-api: {condition: service_healthy}}
+    restart: unless-stopped
+  scanner:
+    build: {context: ./backend, dockerfile: Dockerfile.scanner}
+    environment:
+      <<: *app-env
+      C_FORCE_ROOT: "true"
+      SERVICE_NAME: netscope-scanner
+      LOG_FILE: /logs/netscope-scanner.log
+    cap_add: [NET_RAW, NET_ADMIN]
+    security_opt: [no-new-privileges:true]
+    volumes: [raw-results:/data/raw, oui-data:/data/oui, "./logs/scanner:/logs"]
+    depends_on: {backend-api: {condition: service_healthy}}
+    restart: unless-stopped
+  frontend:
+    build: ./frontend
+    ports: ["${HTTP_PORT:-8080}:80"]
+    volumes: ["./logs/frontend:/logs"]
+    depends_on: {backend-api: {condition: service_healthy}}
+    restart: unless-stopped
+volumes: {postgres-data: {}, redis-data: {}, raw-results: {}, oui-data: {}}

@@ -1,0 +1,324 @@
+import enum
+import uuid
+from datetime import datetime, timezone
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+def now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Role(str, enum.Enum):
+    admin = "admin"
+    operator = "operator"
+    viewer = "viewer"
+
+
+class AssetStatus(str, enum.Enum):
+    online = "online"
+    offline = "offline"
+    unknown = "unknown"
+
+
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[Role] = mapped_column(Enum(Role), default=Role.viewer)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Site(Base):
+    __tablename__ = "sites"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+
+
+class Subnet(Base):
+    __tablename__ = "subnets"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    cidr: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(120))
+    state: Mapped[str] = mapped_column(String(24), default="discovered")
+    site_id: Mapped[str | None] = mapped_column(ForeignKey("sites.id"))
+    last_scan_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ScanProfile(Base):
+    __tablename__ = "scan_profiles"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    modules: Mapped[list] = mapped_column(JSON, default=list)
+    options: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ScanJob(Base):
+    __tablename__ = "scan_jobs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    target: Mapped[str] = mapped_column(String(64))
+    profile_id: Mapped[str] = mapped_column(ForeignKey("scan_profiles.id"))
+    credential_id: Mapped[str | None] = mapped_column(ForeignKey("credentials.id"))
+    status: Mapped[str] = mapped_column(String(24), default="queued")
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class Asset(Base):
+    __tablename__ = "assets"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    status: Mapped[AssetStatus] = mapped_column(Enum(AssetStatus), default=AssetStatus.unknown)
+    hostname: Mapped[str | None] = mapped_column(String(255), index=True)
+    manufacturer: Mapped[str | None] = mapped_column(String(160))
+    model: Mapped[str | None] = mapped_column(String(160))
+    device_type: Mapped[str] = mapped_column(String(80), default="unknown")
+    operating_system: Mapped[str | None] = mapped_column(String(160))
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    site_id: Mapped[str | None] = mapped_column(ForeignKey("sites.id"))
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    addresses: Mapped[list["AssetAddress"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
+    identifiers: Mapped[list["AssetIdentifier"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
+    services: Mapped[list["AssetService"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
+
+
+class AssetAddress(Base):
+    __tablename__ = "asset_addresses"
+    __table_args__ = (UniqueConstraint("asset_id", "address"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id"))
+    address: Mapped[str] = mapped_column(String(64), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=4)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AssetIdentifier(Base):
+    __tablename__ = "asset_identifiers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id"))
+    kind: Mapped[str] = mapped_column(String(40))
+    value: Mapped[str] = mapped_column(String(255), index=True)
+    confidence: Mapped[float] = mapped_column(Float, default=1)
+
+
+class AssetService(Base):
+    __tablename__ = "asset_services"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id"))
+    protocol: Mapped[str] = mapped_column(String(8))
+    port: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str | None] = mapped_column(String(80))
+    product: Mapped[str | None] = mapped_column(String(160))
+    version: Mapped[str | None] = mapped_column(String(80))
+
+
+class RawObservation(Base):
+    __tablename__ = "raw_observations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    scan_id: Mapped[str | None] = mapped_column(ForeignKey("scan_jobs.id"))
+    source: Mapped[str] = mapped_column(String(50))
+    target: Mapped[str] = mapped_column(String(255))
+    raw_data: Mapped[dict] = mapped_column(JSON)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Evidence(Base):
+    __tablename__ = "evidence"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    asset_id: Mapped[str | None] = mapped_column(ForeignKey("assets.id"))
+    observation_id: Mapped[str] = mapped_column(ForeignKey("raw_observations.id"))
+    source: Mapped[str] = mapped_column(String(50))
+    field: Mapped[str] = mapped_column(String(80))
+    value: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Float)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AssetHistory(Base):
+    __tablename__ = "asset_history"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id"))
+    event_type: Mapped[str] = mapped_column(String(50))
+    old_value: Mapped[str | None] = mapped_column(Text)
+    new_value: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    action: Mapped[str] = mapped_column(String(80))
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Credential(Base):
+    __tablename__ = "credentials"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    kind: Mapped[str] = mapped_column(String(30), default="snmpv3")
+    encrypted_secret: Mapped[str] = mapped_column(Text)
+    site_id: Mapped[str | None] = mapped_column(ForeignKey("sites.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Vlan(Base):
+    __tablename__ = "vlans"
+    __table_args__ = (UniqueConstraint("site_id", "vlan_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    vlan_id: Mapped[int] = mapped_column(Integer, index=True)
+    name: Mapped[str | None] = mapped_column(String(120))
+    site_id: Mapped[str | None] = mapped_column(ForeignKey("sites.id"))
+    source: Mapped[str] = mapped_column(String(40), default="snmp")
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class NetworkDevice(Base):
+    __tablename__ = "network_devices"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id"), unique=True)
+    management_ip: Mapped[str | None] = mapped_column(String(64))
+    sys_name: Mapped[str | None] = mapped_column(String(255))
+    sys_descr: Mapped[str | None] = mapped_column(Text)
+    sys_object_id: Mapped[str | None] = mapped_column(String(255))
+    uptime_ticks: Mapped[int | None] = mapped_column(Integer)
+    last_polled: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SwitchPort(Base):
+    __tablename__ = "switch_ports"
+    __table_args__ = (UniqueConstraint("network_device_id", "if_index"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    network_device_id: Mapped[str] = mapped_column(ForeignKey("network_devices.id"))
+    if_index: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str | None] = mapped_column(String(160))
+    description: Mapped[str | None] = mapped_column(String(255))
+    mac_address: Mapped[str | None] = mapped_column(String(32))
+    admin_status: Mapped[str | None] = mapped_column(String(20))
+    oper_status: Mapped[str | None] = mapped_column(String(20))
+    vlan_id: Mapped[int | None] = mapped_column(Integer)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class PortMacEntry(Base):
+    __tablename__ = "port_mac_entries"
+    __table_args__ = (UniqueConstraint("switch_port_id", "mac_address", "vlan_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    switch_port_id: Mapped[str] = mapped_column(ForeignKey("switch_ports.id"))
+    asset_id: Mapped[str | None] = mapped_column(ForeignKey("assets.id"))
+    mac_address: Mapped[str] = mapped_column(String(32), index=True)
+    vlan_id: Mapped[int | None] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(30), default="snmp_fdb")
+    confidence: Mapped[float] = mapped_column(Float, default=0.9)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ArpEntry(Base):
+    __tablename__ = "arp_entries"
+    __table_args__ = (UniqueConstraint("network_device_id", "ip_address", "mac_address"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    network_device_id: Mapped[str] = mapped_column(ForeignKey("network_devices.id"))
+    ip_address: Mapped[str] = mapped_column(String(64), index=True)
+    mac_address: Mapped[str] = mapped_column(String(32), index=True)
+    if_index: Mapped[int | None] = mapped_column(Integer)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class TopologyNode(Base):
+    __tablename__ = "topology_nodes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    asset_id: Mapped[str | None] = mapped_column(ForeignKey("assets.id"), unique=True)
+    label: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(60), default="unknown")
+
+
+class TopologyLink(Base):
+    __tablename__ = "topology_links"
+    __table_args__ = (UniqueConstraint("source_node_id", "target_node_id", "source"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    source_node_id: Mapped[str] = mapped_column(ForeignKey("topology_nodes.id"))
+    target_node_id: Mapped[str] = mapped_column(ForeignKey("topology_nodes.id"))
+    source_port: Mapped[str | None] = mapped_column(String(160))
+    target_port: Mapped[str | None] = mapped_column(String(160))
+    source: Mapped[str] = mapped_column(String(30))
+    confidence: Mapped[float] = mapped_column(Float, default=0.9)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class DeviceRole(Base):
+    __tablename__ = "device_roles"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    slug: Mapped[str] = mapped_column(String(100), unique=True)
+    color: Mapped[str] = mapped_column(String(12), default="3b82f6")
+    description: Mapped[str | None] = mapped_column(Text)
+
+
+class IpamPrefix(Base):
+    __tablename__ = "ipam_prefixes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    prefix: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(30), default="active")
+    role: Mapped[str | None] = mapped_column(String(80))
+    vlan_id: Mapped[str | None] = mapped_column(ForeignKey("vlans.id"))
+    site_id: Mapped[str | None] = mapped_column(ForeignKey("sites.id"))
+    gateway: Mapped[str | None] = mapped_column(String(64))
+    dns_servers: Mapped[list] = mapped_column(JSON, default=list)
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class IpamAddress(Base):
+    __tablename__ = "ipam_addresses"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    address: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    prefix_id: Mapped[str | None] = mapped_column(ForeignKey("ipam_prefixes.id"))
+    asset_id: Mapped[str | None] = mapped_column(ForeignKey("assets.id"))
+    status: Mapped[str] = mapped_column(String(30), default="active")
+    role: Mapped[str | None] = mapped_column(String(80))
+    dns_name: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(30), default="manual")
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AssetMetadata(Base):
+    __tablename__ = "asset_metadata"
+    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id"), primary_key=True)
+    serial_number: Mapped[str | None] = mapped_column(String(160))
+    role: Mapped[str | None] = mapped_column(String(100))
+    platform: Mapped[str | None] = mapped_column(String(120))
+    owner: Mapped[str | None] = mapped_column(String(160))
+    criticality: Mapped[str | None] = mapped_column(String(30))
+    notes: Mapped[str | None] = mapped_column(Text)
+    custom_fields: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
+class UserMfa(Base):
+    __tablename__ = "user_mfa"
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    encrypted_secret: Mapped[str] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AssetArchive(Base):
+    __tablename__ = "asset_archives"
+    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id"), primary_key=True)
+    archived_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    reason: Mapped[str | None] = mapped_column(Text)
+    archived_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

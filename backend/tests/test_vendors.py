@@ -1,0 +1,20 @@
+import pytest
+from app.services.vendors import infer_mobile_identity,is_private_mac,normalize_mac,normalize_vendor
+
+@pytest.mark.parametrize(("raw","expected"),[("Apple, Inc.","Apple"),("Samsung Electronics Co.,Ltd","Samsung"),("Google LLC","Google"),("Xiaomi Communications Co Ltd","Xiaomi"),("Motorola Mobility LLC","Motorola"),("HMD Global Oy","HMD"),("Shenzhen Transsion Holdings","Tecno"),("Cisco Systems","Cisco Systems")])
+def test_mobile_vendor_normalization(raw,expected):
+    assert normalize_vendor(raw)==expected
+
+def test_google_pixel_identity_from_dns_hostname():
+    assert infer_mobile_identity(hostname="Pixel-9-Pro.lan")=={"manufacturer":"Google","device_type":"phone","operating_system":"Android"}
+
+def test_generic_android_is_os_not_vendor():
+    assert infer_mobile_identity(operating_system="Android 15")=={"device_type":"phone","operating_system":"Android"}
+
+def test_iphone_is_apple_ios_phone():
+    assert infer_mobile_identity(hostname="iPhone.lan",operating_system="Apple iOS 15.7")=={"manufacturer":"Apple","device_type":"phone","operating_system":"Apple iOS"}
+
+def test_phone_mac_formats_are_normalized():
+    assert normalize_mac("aa-bb-cc-dd-ee-ff")=="AA:BB:CC:DD:EE:FF"
+    assert normalize_mac("aabb.ccdd.eeff")=="AA:BB:CC:DD:EE:FF"
+    assert is_private_mac("02:11:22:33:44:55")
