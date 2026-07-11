@@ -286,3 +286,9 @@ Le scanner dispose de capacités réseau élevées nécessaires à Nmap. N’ajo
 - les MIB propriétaires peuvent nécessiter une adaptation par constructeur ;
 - les migrations de schéma sont automatiques pour cette version ; une chaîne Alembic versionnée reste recommandée avant une exploitation critique ;
 - NetScope est un outil d’inventaire et ne remplace pas un scanner de vulnérabilités ou un SIEM.
+
+## Licence
+
+NetScope est distribué sous licence [MIT](LICENSE). Vous pouvez l’utiliser, le copier, le modifier, le redistribuer et l’intégrer à des projets personnels ou commerciaux, sous réserve de conserver la notice de copyright et la licence.
+
+Le logiciel est fourni sans garantie. Les contributions et améliorations sont les bienvenues.
