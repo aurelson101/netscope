@@ -21,7 +21,7 @@ from app.core.security import create_token, current_user, hash_password, require
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, Credential, DeviceRole, Evidence, IpamAddress, IpamPrefix, NetworkDevice, PortMacEntry, RawObservation, Role, ScanJob, ScanProfile, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, Vlan
-from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, DatacenterDeviceCreate, DnsTest, IpAddressCreate, ManualAssetCreate, MfaCode, PasswordChange, PrefixCreate, PrefixUpdate, ReportEmail, ScanCreate, ScanOut, SiteCreate, SiteOut, SnmpCredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, VlanCreate
+from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, DatacenterDeviceCreate, DnsTest, IpAddressCreate, ManualAssetCreate, MfaCode, PasswordChange, PrefixCreate, PrefixUpdate, ReportEmail, ScanCreate, ScanOut, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, VlanCreate
 from app.services.topology import ensure_asset_node, rebuild_inferred_topology
 from app.core.secrets import decrypt_secret, encrypt_secret
 from app.services.safety import validate_target
@@ -305,8 +305,8 @@ async def create_scan(data: ScanCreate, db: AsyncSession = Depends(get_db), user
     if not profile: raise HTTPException(404, "Profil introuvable")
     active = await db.scalar(select(func.count()).select_from(ScanJob).where(ScanJob.target == target, ScanJob.status.in_(["queued","running"])))
     if active: raise HTTPException(409, "Un scan de cette cible est déjà actif")
-    if "snmp" in profile.modules and not data.credential_id: raise HTTPException(422,"Un identifiant SNMPv3 est requis pour ce profil")
-    if data.credential_id and not await db.get(Credential,data.credential_id): raise HTTPException(404,"Identifiant SNMPv3 introuvable")
+    if "snmp" in profile.modules and not data.credential_id and not settings.snmp_default_credential:raise HTTPException(422,"Un identifiant SNMP est requis ou configurez un défaut dans .env")
+    if data.credential_id and not await db.get(Credential,data.credential_id):raise HTTPException(404,"Identifiant SNMP introuvable")
     row = ScanJob(target=target, profile_id=profile.id, credential_id=data.credential_id, created_by=user.id); db.add(row); db.add(AuditLog(user_id=user.id, action="scan_created", details={"target":target})); await db.commit(); await db.refresh(row)
     try:
         from app.workers.tasks import execute_scan
@@ -414,6 +414,12 @@ async def create_snmp_credential(data:SnmpCredentialCreate,db:AsyncSession=Depen
     secret=data.model_dump(exclude={"name","site_id"});secret["version"]="3"
     row=Credential(name=data.name,kind="snmpv3",site_id=data.site_id,encrypted_secret=encrypt_secret(secret));db.add(row)
     db.add(AuditLog(user_id=user.id,action="credential_created",details={"id":row.id,"kind":"snmpv3","name":row.name}));await db.commit();await db.refresh(row)
+    return {"id":row.id,"name":row.name,"kind":row.kind,"site_id":row.site_id,"created_at":row.created_at}
+
+@router.post("/credentials/snmpv2c")
+async def create_snmpv2_credential(data:SnmpV2CredentialCreate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    row=Credential(name=data.name,kind="snmpv2c",site_id=data.site_id,encrypted_secret=encrypt_secret({"version":"2c","community":data.community}));db.add(row)
+    db.add(AuditLog(user_id=user.id,action="credential_created",details={"id":row.id,"kind":"snmpv2c","name":row.name}));await db.commit();await db.refresh(row)
     return {"id":row.id,"name":row.name,"kind":row.kind,"site_id":row.site_id,"created_at":row.created_at}
 
 

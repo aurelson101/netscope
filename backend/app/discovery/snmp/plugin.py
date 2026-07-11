@@ -15,12 +15,18 @@ class SnmpPlugin(DiscoveryPlugin):
     name="snmp"
     async def discover(self,target:str,options:dict):
         credential=options.get("credential") or {}
-        if credential.get("version")!="3": raise ValueError("SNMPv3 est requis (SNMPv2c doit être explicitement géré séparément)")
-        user=credential.get("username")
-        if not user: raise ValueError("Nom d'utilisateur SNMPv3 manquant")
-        base=["snmpbulkwalk","-v3","-l",credential.get("security_level","authPriv"),"-u",user,"-t",str(options.get("timeout",3)),"-r",str(options.get("retries",1))]
-        if credential.get("auth_password"): base += ["-a",credential.get("auth_protocol","SHA"),"-A",credential["auth_password"]]
-        if credential.get("privacy_password"): base += ["-x",credential.get("privacy_protocol","AES"),"-X",credential["privacy_password"]]
+        version=str(credential.get("version","")).lower()
+        timeout=["-t",str(options.get("timeout",3)),"-r",str(options.get("retries",1))]
+        if version=="3":
+            user=credential.get("username")
+            if not user:raise ValueError("Nom d'utilisateur SNMPv3 manquant")
+            base=["snmpbulkwalk","-v3","-l",credential.get("security_level","authPriv"),"-u",user,*timeout]
+            if credential.get("auth_password"):base += ["-a",credential.get("auth_protocol","SHA"),"-A",credential["auth_password"]]
+            if credential.get("privacy_password"):base += ["-x",credential.get("privacy_protocol","AES"),"-X",credential["privacy_password"]]
+        elif version in ("2","2c","v2c"):
+            if not credential.get("community"):raise ValueError("Communauté SNMPv2c manquante")
+            base=["snmpbulkwalk","-v2c","-c",credential["community"],*timeout]
+        else:raise ValueError("Version SNMP non prise en charge (utilisez 3 ou 2c)")
         sections={}
         for name,oid in OIDS.items():
             proc=await asyncio.create_subprocess_exec(*base,target,oid,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)

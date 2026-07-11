@@ -46,8 +46,9 @@ async def _execute(job_id:str):
                 if module=="snmp":
                     credential_id=job.credential_id or profile.options.get("credential_id")
                     credential=await db.get(Credential,credential_id) if credential_id else None
-                    if not credential: raise ValueError("Aucun identifiant SNMPv3 affecté au profil")
-                    options["credential"]=decrypt_secret(credential.encrypted_secret)
+                    default=settings.snmp_default_credential
+                    if not credential and not default:raise ValueError("Aucun identifiant SNMP affecté au profil et aucun défaut configuré dans .env")
+                    options["credential"]=decrypt_secret(credential.encrypted_secret) if credential else default
                 targets=[job.target]
                 if module=="dns" and "/" in job.target:
                     targets=sorted(discovered_targets)

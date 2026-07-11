@@ -94,6 +94,11 @@ class SnmpCredentialCreate(BaseModel):
     privacy_password: str | None = Field(default=None,min_length=8)
     site_id: str | None = None
 
+class SnmpV2CredentialCreate(BaseModel):
+    name: str = Field(min_length=2,max_length=120)
+    community: str = Field(min_length=1,max_length=255)
+    site_id: str | None = None
+
 
 class PrefixCreate(BaseModel):
     prefix: str
