@@ -220,3 +220,49 @@ test("la vue infrastructure reste contenue à 1280 pixels", async ({ page }) => 
     );
   expect(columns).toBe(2);
 });
+
+test("l opérateur peut supprimer un scan terminé de l historique", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem(
+      "user",
+      JSON.stringify({ id: "operator-1", username: "ops", role: "operator" }),
+    );
+  });
+  await page.route("**/api/v1/auth/me", (route) =>
+    route.fulfill({
+      json: { id: "operator-1", username: "ops", role: "operator" },
+    }),
+  );
+  let deleted = false;
+  await page.route("**/api/v1/scans", (route) =>
+    route.fulfill({
+      json: deleted
+        ? []
+        : [
+            {
+              id: "scan-1",
+              target: "192.0.2.0/24",
+              status: "completed",
+              created_at: "2026-07-12T10:00:00Z",
+            },
+          ],
+    }),
+  );
+  await page.route("**/api/v1/scans/scan-1", (route) => {
+    deleted = true;
+    return route.fulfill({ json: { deleted: true } });
+  });
+  for (const endpoint of ["scan-profiles", "credentials", "scan-schedules"]) {
+    await page.route(`**/api/v1/${endpoint}`, (route) =>
+      route.fulfill({ json: [] }),
+    );
+  }
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.goto("/#/scans");
+  await page.getByRole("button", { name: "Supprimer de l’historique" }).click();
+  await expect(page.getByText("192.0.2.0/24")).toHaveCount(0);
+  expect(deleted).toBe(true);
+});

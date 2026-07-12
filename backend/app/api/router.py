@@ -367,6 +367,21 @@ async def create_scan(data: ScanCreate, db: AsyncSession = Depends(get_db), user
         raise HTTPException(503,"Scanner temporairement indisponible") from exc
     return row
 
+
+@router.delete("/scans/{scan_id}")
+async def delete_scan(scan_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(require(Role.admin, Role.operator))):
+    row = await db.get(ScanJob, scan_id)
+    if not row:
+        raise HTTPException(404, "Scan introuvable")
+    if row.status in ("queued", "running"):
+        raise HTTPException(409, "Un scan en cours ne peut pas être supprimé")
+    await db.execute(update(RawObservation).where(RawObservation.scan_id == scan_id).values(scan_id=None))
+    details = {"id": row.id, "target": row.target, "status": row.status}
+    await db.delete(row)
+    db.add(AuditLog(user_id=user.id, action="scan_history_deleted", details=details))
+    await db.commit()
+    return {"deleted": True}
+
 @router.get("/scan-schedules")
 async def scan_schedules(db:AsyncSession=Depends(get_db),_=Depends(current_user)):
     return (await db.execute(select(ScanSchedule).order_by(ScanSchedule.name))).scalars().all()

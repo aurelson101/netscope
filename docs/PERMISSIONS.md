@@ -11,6 +11,7 @@ Le rôle Lecteur est prévu pour un affichage passif, par exemple sur une TV : i
 | Modifier son mot de passe et son MFA | non | oui | oui |
 | Créer/modifier/archiver des actifs | non | oui | oui |
 | Lancer et planifier des scans, tester DNS/SNMP | non | oui | oui |
+| Supprimer une entrée terminée de l’historique des scans | non | oui | oui |
 | Gérer les adresses, plages, réservations et relations | non | oui | oui |
 | Envoyer ponctuellement un rapport SMTP | non | oui | oui |
 | Supprimer sites, réseaux, VLAN et préfixes | non | non | oui |

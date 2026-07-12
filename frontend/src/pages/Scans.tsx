@@ -82,6 +82,17 @@ export function Scans() {
     await api("/scan-schedules/" + id, { method: "DELETE" });
     load();
   }
+  async function removeScan(scan: any) {
+    if (!confirm(`Supprimer le scan de ${scan.target} de l’historique ?`))
+      return;
+    try {
+      await api("/scans/" + scan.id, { method: "DELETE" });
+      setError("");
+      load();
+    } catch (x: any) {
+      setError(x.message);
+    }
+  }
   async function toggle(row: any) {
     try {
       await api("/scan-schedules/" + row.id, {
@@ -127,6 +138,15 @@ export function Scans() {
                   </small>
                 </span>
                 <em className={"badge " + s.status}>{s.status}</em>
+                {editable && !["queued", "running"].includes(s.status) && (
+                  <button
+                    className="icon danger"
+                    title="Supprimer de l’historique"
+                    onClick={() => removeScan(s)}
+                  >
+                    <Trash2 />
+                  </button>
+                )}
               </div>
             ))}
           </div>
