@@ -1,0 +1,27 @@
+groups:
+  - name: netscope
+    rules:
+      - alert: NetScopeEndpointDown
+        expr: probe_success{job="netscope"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "NetScope indisponible"
+          description: "La cible {{ $labels.instance }} ne répond plus depuis 2 minutes."
+      - alert: PostgreSQLExporterDown
+        expr: up{job="postgres"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Supervision PostgreSQL indisponible"}
+      - alert: RedisExporterDown
+        expr: up{job="redis"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Supervision Redis indisponible"}
+      - alert: BackupMissingOrStale
+        expr: absent(netscope_backup_last_success_timestamp_seconds) or (time() - netscope_backup_last_success_timestamp_seconds > 129600)
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "Sauvegarde NetScope absente ou trop ancienne"
+          description: "Aucune sauvegarde PostgreSQL réussie depuis plus de 36 heures."

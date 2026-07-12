@@ -12,6 +12,30 @@ services:
     volumes: [redis-data:/data]
     healthcheck: {test: [CMD, redis-cli, ping], interval: 5s, timeout: 3s, retries: 10}
     restart: unless-stopped
+  backup:
+    image: postgres:17-alpine
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: netscope
+      PGUSER: netscope
+      PGPASSWORD: ${POSTGRES_PASSWORD:-netscope-dev-password}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    command: /usr/local/bin/backup-postgres.sh
+    volumes:
+      - ./scripts/backup-postgres.sh:/usr/local/bin/backup-postgres.sh:ro
+      - ./backups:/backups
+      - backup-metrics:/metrics
+    security_opt: [no-new-privileges:true]
+    depends_on: {postgres: {condition: service_healthy}}
+    healthcheck:
+      test: [CMD-SHELL, "test -n \"$$(find /backups -name 'netscope-*.dump' -type f -mtime -2 -print -quit)\""]
+      interval: 1h
+      timeout: 5s
+      retries: 2
+      start_period: 2m
+    restart: unless-stopped
   backend-api:
     build: ./backend
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
@@ -22,6 +46,10 @@ services:
       MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:-NetScope-Development-Master-Key-2026-Change-Me}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-NetScopeAdmin2026!}
+      APP_NAME: ${APP_NAME:-NetScope}
+      ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-120}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:5173}
+      MAX_SCAN_HOSTS: ${MAX_SCAN_HOSTS:-4096}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
@@ -85,4 +113,4 @@ services:
     volumes: ["./logs/frontend:/logs"]
     depends_on: {backend-api: {condition: service_healthy}}
     restart: unless-stopped
-volumes: {postgres-data: {}, redis-data: {}, raw-results: {}, oui-data: {}}
+volumes: {postgres-data: {}, redis-data: {}, raw-results: {}, oui-data: {}, backup-metrics: {}}

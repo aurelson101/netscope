@@ -1,5 +1,6 @@
 .env
 *.dump
+backups/
 logs/**/*.log
 logs/reports/*.json
 frontend/node_modules/

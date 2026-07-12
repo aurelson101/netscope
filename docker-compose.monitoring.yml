@@ -1,0 +1,81 @@
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: [monitoring]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=${METRICS_RETENTION:-15d}"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports: ["${MONITORING_BIND:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090"]
+    depends_on: [alertmanager, blackbox-exporter, postgres-exporter, redis-exporter, backup-exporter]
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    profiles: [monitoring]
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports: ["${MONITORING_BIND:-127.0.0.1}:${ALERTMANAGER_PORT:-9093}:9093"]
+    depends_on: [ntfy]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    profiles: [monitoring]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-in-production}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/netscope.yml:ro
+    ports: ["${MONITORING_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.27.0
+    profiles: [monitoring]
+    volumes: ["./monitoring/blackbox.yml:/etc/blackbox_exporter/config.yml:ro"]
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    profiles: [monitoring]
+    environment:
+      DATA_SOURCE_NAME: postgresql://netscope:${POSTGRES_PASSWORD:-netscope-dev-password}@postgres:5432/netscope?sslmode=disable
+    depends_on: {postgres: {condition: service_healthy}}
+    restart: unless-stopped
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.77.0
+    profiles: [monitoring]
+    environment: {REDIS_ADDR: redis://redis:6379}
+    depends_on: {redis: {condition: service_healthy}}
+    restart: unless-stopped
+
+  backup-exporter:
+    image: prom/node-exporter:v1.9.1
+    profiles: [monitoring]
+    command: ["--collector.disable-defaults", "--collector.textfile", "--collector.textfile.directory=/metrics"]
+    volumes: ["backup-metrics:/metrics:ro"]
+    depends_on: [backup]
+    restart: unless-stopped
+
+  ntfy:
+    image: binwiederhier/ntfy:v2.14.0
+    profiles: [monitoring]
+    command: serve
+    environment: {NTFY_BASE_URL: "${NTFY_BASE_URL:-http://localhost:8081}"}
+    volumes: [ntfy-data:/var/cache/ntfy]
+    ports: ["${MONITORING_BIND:-127.0.0.1}:${NTFY_PORT:-8081}:80"]
+    restart: unless-stopped
+
+volumes:
+  prometheus-data: {}
+  alertmanager-data: {}
+  grafana-data: {}
+  ntfy-data: {}

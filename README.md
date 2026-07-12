@@ -234,6 +234,32 @@ logs/scheduler/
 
 ## 7. Sauvegarder et restaurer
 
+### Sauvegarde automatique
+
+Le service `backup` crée automatiquement une sauvegarde PostgreSQL au format
+`custom` dans `backups/`. Par défaut, il s'exécute toutes les 24 heures et
+conserve 14 jours d'historique. Ces valeurs se configurent dans `.env` :
+
+```dotenv
+BACKUP_INTERVAL_HOURS=24
+BACKUP_RETENTION_DAYS=14
+```
+
+Vérifiez son état et son dernier journal :
+
+```bash
+docker compose ps backup
+docker compose logs --tail=20 backup
+ls -lh backups/
+```
+
+Les fichiers sont écrits d'abord avec l'extension `.tmp`, puis renommés
+uniquement après la réussite de `pg_dump`. Une sauvegarde doit toujours être
+copiée sur un autre hôte ou stockage objet pour protéger aussi la panne du
+serveur.
+
+### Sauvegarde manuelle
+
 Créer une sauvegarde PostgreSQL :
 
 ```bash
@@ -250,7 +276,37 @@ docker compose exec -T postgres pg_restore -U netscope -d netscope --clean --if-
 
 Testez toujours une restauration avant de considérer une sauvegarde comme valide.
 
-## 8. Dépannage simple
+## 8. Supervision et alertes facultatives
+
+NetScope fournit un profil de supervision avec Prometheus, Grafana,
+Alertmanager, Blackbox Exporter et des exporters PostgreSQL, Redis et
+sauvegardes. Il contrôle l'interface, l'API prête, PostgreSQL, Redis et l'âge de
+la dernière sauvegarde.
+
+Avant l'activation, remplacez au minimum `GRAFANA_ADMIN_PASSWORD` dans `.env`,
+puis lancez :
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml \
+  --profile monitoring up -d
+```
+
+Les interfaces restent accessibles seulement depuis le serveur par défaut :
+
+- Grafana : `http://127.0.0.1:3000` ;
+- Prometheus : `http://127.0.0.1:9090` ;
+- Alertmanager : `http://127.0.0.1:9093` ;
+- notifications ntfy : `http://127.0.0.1:8081/netscope-alerts`.
+
+Pour recevoir les alertes, ouvrez le sujet `netscope-alerts` dans l'application
+ntfy ou dans son interface web. Alertmanager envoie une notification quand
+NetScope ne répond plus pendant deux minutes, quand un exporter PostgreSQL ou
+Redis tombe, ou quand aucune sauvegarde valide n'a été produite depuis 36
+heures. Pour un accès distant, publiez ces interfaces derrière HTTPS avec une
+authentification ; ne remplacez pas `MONITORING_BIND=127.0.0.1` par `0.0.0.0`
+sur un serveur exposé.
+
+## 9. Dépannage simple
 
 ### La page ne s’ouvre pas
 
@@ -285,7 +341,7 @@ Ajoutez le serveur DNS interne dans **Paramètres**, vérifiez qu’un enregistr
 
 Après cinq mots de passe incorrects, NetScope bloque les essais pendant cinq minutes pour protéger le compte. Attendez avant de réessayer.
 
-## 9. Sécurité avant exposition
+## 10. Sécurité avant exposition
 
 Un exemple Caddy complet est fourni dans [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md). Il active HTTPS, HSTS, le renouvellement automatique du certificat et les journaux JSON. Lorsque Caddy tourne sur le même hôte, définissez `HTTP_BIND=127.0.0.1`.
 
@@ -299,7 +355,7 @@ Un exemple Caddy complet est fourni dans [docs/REVERSE_PROXY.md](docs/REVERSE_PR
 
 Le scanner dispose de capacités réseau élevées nécessaires à Nmap. N’ajoutez pas d’autres volumes ou accès hôte au conteneur scanner.
 
-## 10. Fonctionnalités principales
+## 11. Fonctionnalités principales
 
 - inventaire manuel et découvert, édition, archivage et restauration ;
 - IPAM IPv4/IPv6, DNS, préfixes, adresses et utilisation ;
