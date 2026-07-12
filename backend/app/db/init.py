@@ -1,11 +1,19 @@
 import ipaddress
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db.session import SessionLocal, engine
-from app.models import Asset, AssetAddress, Base, DeviceRole, IpamAddress, IpamPrefix, Role, ScanJob, ScanProfile, Site, Subnet, User, UserSession
+from app.models import Asset, AssetAddress, AuditLog, Base, DeviceRole, IpamAddress, IpamPrefix, Role, ScanJob, ScanProfile, Site, Subnet, User, UserSession
 from app.services.vendors import infer_mobile_identity
+
+async def recover_admin_access(db)->bool:
+    if await db.scalar(select(func.count()).select_from(User).where(User.role==Role.admin,User.active.is_(True))):return False
+    recovery=(await db.execute(select(User).where(User.username==settings.admin_username))).scalar_one_or_none()
+    if not recovery:return False
+    recovery.role=Role.admin;recovery.active=True
+    db.add(AuditLog(user_id=recovery.id,action="admin_access_recovered",details={"reason":"no_active_administrator"}))
+    return True
 
 
 async def init_db():
@@ -24,6 +32,7 @@ async def init_db():
             if inferred:asset.confidence=max(asset.confidence,0.68)
         if not await db.scalar(select(User.id).limit(1)):
             db.add(User(username=settings.admin_username,password_hash=hash_password(settings.admin_password),role=Role.admin))
+        else:await recover_admin_access(db)
         if not await db.scalar(select(Site.id).limit(1)): db.add(Site(name="Principal",description="Site principal"))
         if not await db.scalar(select(ScanProfile.id).limit(1)):
             db.add_all([ScanProfile(name="Inventaire rapide",modules=["icmp","arp","nmap","dns"],options={"nmap":{"profile":"fast"}}),ScanProfile(name="Inventaire standard",modules=["icmp","arp","nmap","dns"],options={"nmap":{"profile":"standard"}}),ScanProfile(name="Découverte passive",modules=["dns"],options={})])

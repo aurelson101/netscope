@@ -17,7 +17,7 @@ import {
   Users,
 } from "lucide-react";
 import { api } from "../lib/api";
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 const nav = [
   ["Tableau de bord", ChartNoAxesCombined, "#/"],
   ["Scans", ScanSearch, "#/scans"],
@@ -30,8 +30,18 @@ export function Layout({
   title: string;
 }) {
   const [open, setOpen] = useState(true),
-    user = JSON.parse(localStorage.getItem("user") || "{}"),
+    [user, setUser] = useState(() =>
+      JSON.parse(localStorage.getItem("user") || "{}"),
+    ),
     current = "#" + (location.hash.slice(1).split("?")[0] || "/");
+  useEffect(() => {
+    api<any>("/auth/me")
+      .then((fresh) => {
+        setUser(fresh);
+        localStorage.setItem("user", JSON.stringify(fresh));
+      })
+      .catch(() => undefined);
+  }, []);
   const Link = ({
     href,
     icon: Icon,

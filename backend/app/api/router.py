@@ -91,8 +91,13 @@ async def update_user(user_id:str,data:UserUpdate,db:AsyncSession=Depends(get_db
     if not row:raise HTTPException(404,"Utilisateur introuvable")
     values=data.model_dump(exclude_unset=True)
     if row.id==admin.id and values.get("active") is False:raise HTTPException(422,"Vous ne pouvez pas désactiver votre propre compte")
-    if "role" in values:row.role=Role(values["role"])
-    if "active" in values:row.active=values["active"]
+    if row.id==admin.id and values.get("role") not in (None,Role.admin.value):raise HTTPException(422,"Vous ne pouvez pas retirer votre propre rôle administrateur")
+    removes_admin=(values.get("active") is False) or (values.get("role") not in (None,Role.admin.value))
+    if row.role==Role.admin and removes_admin:
+        active_admins=await db.scalar(select(func.count()).select_from(User).where(User.role==Role.admin,User.active.is_(True))) or 0
+        if active_admins<=1:raise HTTPException(422,"Au moins un administrateur actif doit être conservé")
+    if values.get("role") is not None:row.role=Role(values["role"])
+    if values.get("active") is not None:row.active=values["active"]
     if values.get("password"):validate_password_policy(values["password"]);row.password_hash=hash_password(values["password"])
     if "active" in values or values.get("password"):
         await db.execute(update(UserSession).where(UserSession.user_id==row.id,UserSession.revoked_at.is_(None)).values(revoked_at=datetime.now(timezone.utc)))
