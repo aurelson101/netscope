@@ -77,41 +77,55 @@
   width: 17px;
 }
 .labIntro {
-  padding: 10px 2px 18px;
+  padding: 10px 2px 16px;
 }
 .labIntro h1 {
   margin: 0 0 5px;
-  font-size: 25px;
+  font-size: clamp(22px, 2vw, 28px);
+  line-height: 1.15;
 }
 .labIntro p {
   margin: 0;
   color: #8ea2b4;
+  line-height: 1.5;
 }
 .labGrid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 12px;
 }
 .labCard {
   display: flex;
+  align-items: flex-start;
   gap: 15px;
-  padding: 18px;
+  min-width: 0;
+  min-height: 124px;
+  padding: 18px 16px;
   text-decoration: none;
   color: #dce9f5;
-  transition: 0.15s;
+  overflow: hidden;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 .labCard:hover {
   transform: translateY(-2px);
   border-color: #3c78a4;
 }
 .labCard > svg {
+  flex: 0 0 auto;
   width: 29px;
   height: 29px;
   color: #50a8f8;
 }
+.labCard > div {
+  min-width: 0;
+}
 .labCard strong {
   font-size: 25px;
+  line-height: 1;
 }
 .labCard h3 {
   margin: 2px 0 5px;
@@ -122,17 +136,75 @@
   font-size: 12px;
   line-height: 1.4;
 }
+.labMetrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+.labMetrics .metric {
+  min-height: 106px;
+}
+.labTable {
+  max-width: 100%;
+}
+.labTableHead {
+  position: sticky;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: min(100%, 760px);
+  padding: 15px 16px 12px;
+  border-bottom: 1px solid #21384a;
+  background: #112638;
+}
+.labTableHead h3 {
+  margin: 0 0 3px;
+}
+.labTableHead p {
+  margin: 0;
+  color: #8198ab;
+  font-size: 11px;
+}
+.labTableHead a {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid #31516a;
+  border-radius: 6px;
+  color: #93c9fb;
+  text-decoration: none;
+}
+.labTableHead a:hover {
+  border-color: #4c87b5;
+  background: #1a3b54;
+  color: #fff;
+}
+.labTable table {
+  min-width: 760px;
+}
 .tablePanel tbody tr {
   cursor: pointer;
 }
-@media (max-width: 1100px) {
+@media (max-width: 1450px) {
   .labGrid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 650px) {
   .labGrid {
     grid-template-columns: 1fr;
+  }
+  .labMetrics {
+    grid-template-columns: 1fr;
+  }
+  .labCard {
+    min-height: 104px;
+  }
+  .labTableHead {
+    align-items: flex-start;
+  }
+  .labTableHead p {
+    display: none;
   }
   .pageTools {
     align-items: flex-start;

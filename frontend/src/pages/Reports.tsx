@@ -136,22 +136,31 @@ export function Reports() {
           )}
           {message && <div className="hint">{message}</div>}
         </article>
-        <article className="panel">
-          <h3>Téléchargements</h3>
-          {options.map((x) => (
-            <div className="rowActions" key={x.id}>
-              <b>{x.label}</b>
-              <button onClick={() => download(x.id, "csv")}>
-                <Download />
-                CSV
-              </button>
-              <button onClick={() => download(x.id, "pdf")}>
-                <Download />
-                PDF
-              </button>
-            </div>
-          ))}
-        </article>
+        {editable ? (
+          <article className="panel">
+            <h3>Téléchargements</h3>
+            {options.map((x) => (
+              <div className="rowActions" key={x.id}>
+                <b>{x.label}</b>
+                <button onClick={() => download(x.id, "csv")}>
+                  <Download />
+                  CSV
+                </button>
+                <button onClick={() => download(x.id, "pdf")}>
+                  <Download />
+                  PDF
+                </button>
+              </div>
+            ))}
+          </article>
+        ) : (
+          <article className="panel">
+            <h3>Rapports</h3>
+            <p className="readOnlyNotice">
+              Mode affichage : les téléchargements sont désactivés.
+            </p>
+          </article>
+        )}
       </div>
       {administrative && (
         <div className="split" style={{ marginTop: 12 }}>

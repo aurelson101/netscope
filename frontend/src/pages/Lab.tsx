@@ -61,7 +61,7 @@ export function Lab() {
           </div>
         </a>
       </div>
-      <div className="metrics">
+      <div className="metrics labMetrics">
         <article className="metric">
           <div>
             <span>Équipements réseau</span>
@@ -83,8 +83,14 @@ export function Lab() {
           </i>
         </article>
       </div>
-      <article className="panel tablePanel">
-        <h3>Équipements récents</h3>
+      <article className="panel tablePanel labTable">
+        <div className="labTableHead">
+          <div>
+            <h3>Équipements récents</h3>
+            <p>Les dix derniers équipements observés sur l’infrastructure.</p>
+          </div>
+          <a href="#/assets">Voir l’inventaire</a>
+        </div>
         <table>
           <thead>
             <tr>

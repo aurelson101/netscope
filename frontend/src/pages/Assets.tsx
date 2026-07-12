@@ -108,10 +108,12 @@ export function Assets() {
             Ajouter
           </button>
         )}
-        <button className="button" onClick={downloadAssets}>
-          <Download />
-          Exporter CSV
-        </button>
+        {editable && (
+          <button className="button" onClick={downloadAssets}>
+            <Download />
+            Exporter CSV
+          </button>
+        )}
       </div>
       {Object.keys(filters).length > 0 && (
         <div className="filterBar">

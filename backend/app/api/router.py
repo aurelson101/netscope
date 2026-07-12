@@ -113,7 +113,7 @@ async def revoke_user_sessions(user_id:str,db:AsyncSession=Depends(get_db),admin
     result=await db.execute(update(UserSession).where(UserSession.user_id==user_id,UserSession.revoked_at.is_(None)).values(revoked_at=datetime.now(timezone.utc)));db.add(AuditLog(user_id=admin.id,action="sessions_revoked",details={"user_id":user_id}));await db.commit();return {"revoked":result.rowcount}
 
 @router.post("/auth/password")
-async def change_password(data:PasswordChange,db:AsyncSession=Depends(get_db),user:User=Depends(current_user)):
+async def change_password(data:PasswordChange,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
     if not verify_password(data.current_password,user.password_hash):raise HTTPException(422,"Mot de passe actuel incorrect")
     if data.current_password==data.new_password:raise HTTPException(422,"Le nouveau mot de passe doit être différent")
     validate_password_policy(data.new_password)
@@ -126,7 +126,7 @@ async def mfa_status(db:AsyncSession=Depends(get_db),user:User=Depends(current_u
 
 
 @router.post("/auth/mfa/setup")
-async def mfa_setup(db:AsyncSession=Depends(get_db),user:User=Depends(current_user)):
+async def mfa_setup(db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
     secret=pyotp.random_base32();row=await db.get(UserMfa,user.id)
     if not row:row=UserMfa(user_id=user.id,encrypted_secret=encrypt_secret({"secret":secret}));db.add(row)
     else:row.encrypted_secret=encrypt_secret({"secret":secret});row.enabled=False;row.confirmed_at=None
@@ -135,7 +135,7 @@ async def mfa_setup(db:AsyncSession=Depends(get_db),user:User=Depends(current_us
 
 
 @router.post("/auth/mfa/confirm")
-async def mfa_confirm(data:MfaCode,db:AsyncSession=Depends(get_db),user:User=Depends(current_user)):
+async def mfa_confirm(data:MfaCode,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
     row=await db.get(UserMfa,user.id)
     if not row:raise HTTPException(409,"Initialisez d'abord le MFA")
     if not pyotp.TOTP(decrypt_secret(row.encrypted_secret)["secret"]).verify(data.code,valid_window=1):raise HTTPException(422,"Code MFA invalide")
@@ -143,7 +143,7 @@ async def mfa_confirm(data:MfaCode,db:AsyncSession=Depends(get_db),user:User=Dep
 
 
 @router.post("/auth/mfa/disable")
-async def mfa_disable(data:MfaCode,db:AsyncSession=Depends(get_db),user:User=Depends(current_user)):
+async def mfa_disable(data:MfaCode,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
     row=await db.get(UserMfa,user.id)
     if not row or not row.enabled:raise HTTPException(409,"MFA non activé")
     if not pyotp.TOTP(decrypt_secret(row.encrypted_secret)["secret"]).verify(data.code,valid_window=1):raise HTTPException(422,"Code MFA invalide")
@@ -185,7 +185,7 @@ async def assets(search: str | None = None, status: str | None = None, device_ty
 
 
 @router.get("/assets/export.csv")
-async def export_assets(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+async def export_assets(db: AsyncSession = Depends(get_db), user: User = Depends(require(Role.admin, Role.operator))):
     rows = (await db.execute(asset_query())).scalars().unique().all()
     out = io.StringIO(); writer = csv.writer(out)
     writer.writerow(["status","ip","mac","hostname","vendor","model","type","os","confidence","first_seen","last_seen"])
@@ -760,7 +760,7 @@ def report_pdf(kind:str,csv_content:str)->bytes:
     doc.build(story);return target.getvalue()
 
 @router.get("/reports/{kind}.{format}")
-async def download_report(kind:str,format:str,db:AsyncSession=Depends(get_db),_=Depends(current_user)):
+async def download_report(kind:str,format:str,db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin,Role.operator))):
     if kind not in REPORT_LABELS or format not in ("csv","pdf"):raise HTTPException(404,"Rapport introuvable")
     filename,content=await build_report(kind,db)
     if format=="pdf":payload=report_pdf(kind,content);filename=filename.removesuffix(".csv")+".pdf";media="application/pdf"

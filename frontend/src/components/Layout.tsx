@@ -17,7 +17,7 @@ import {
   Users,
 } from "lucide-react";
 import { api } from "../lib/api";
-import { isAdmin, useCurrentUser } from "../lib/permissions";
+import { canOperate, isAdmin, useCurrentUser } from "../lib/permissions";
 import { ReactNode, useState } from "react";
 const nav = [
   ["Tableau de bord", ChartNoAxesCombined, "#/"],
@@ -87,7 +87,9 @@ export function Layout({
         <nav>
           <Link href="#/reports" icon={FileText} label="Rapports" />
           <Link href="#/archives" icon={Archive} label="Archives" />
-          <Link href="#/settings" icon={Settings} label="Paramètres" />
+          {canOperate(user) && (
+            <Link href="#/settings" icon={Settings} label="Paramètres" />
+          )}
           {isAdmin(user) && (
             <Link href="#/users" icon={Users} label="Utilisateurs" />
           )}

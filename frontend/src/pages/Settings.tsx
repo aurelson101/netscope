@@ -212,74 +212,85 @@ export function Settings() {
             ))}
           </article>
         )}
-        <article className="panel formPanel">
-          <h3>
-            <ShieldCheck /> Authentification multifacteur
-          </h3>
-          <p className="hint">
-            État : <b>{mfa.enabled ? "Activé" : "Désactivé"}</b>.
-          </p>
-          {!mfa.enabled && !setup && (
-            <button className="primary" onClick={startMfa}>
-              <KeyRound />
-              Configurer le MFA
-            </button>
-          )}
-          {setup && (
-            <>
-              <div className="mfaSecret">
-                <small>Clé à saisir dans l’application</small>
-                <code>{setup.secret}</code>
-                <small>{setup.otpauth_uri}</small>
-              </div>
-              <CodeForm action={confirm} label="Confirmer et activer" />
-            </>
-          )}
-          {mfa.enabled && (
-            <CodeForm action={disable} label="Désactiver le MFA" />
-          )}
-        </article>
-        <article className="panel formPanel">
-          <h3>
-            <LockKeyhole /> Mot de passe
-          </h3>
-          <p className="hint">
-            12 caractères minimum avec majuscule, minuscule, chiffre et
-            caractère spécial.
-          </p>
-          <form onSubmit={password}>
-            <label>
-              Mot de passe actuel
-              <input
-                name="current_password"
-                type="password"
-                autoComplete="current-password"
-                required
-              />
-            </label>
-            <label>
-              Nouveau mot de passe
-              <input
-                name="new_password"
-                type="password"
-                minLength={12}
-                autoComplete="new-password"
-                required
-              />
-            </label>
-            <label>
-              Confirmation
-              <input
-                name="confirm_password"
-                type="password"
-                minLength={12}
-                autoComplete="new-password"
-                required
-              />
-            </label>
-            <button className="primary">Changer le mot de passe</button>
-          </form>
-        </article>
+        {editable && (
+          <article className="panel formPanel">
+            <h3>
+              <ShieldCheck /> Authentification multifacteur
+            </h3>
+            <p className="hint">
+              État : <b>{mfa.enabled ? "Activé" : "Désactivé"}</b>.
+            </p>
+            {!mfa.enabled && !setup && (
+              <button className="primary" onClick={startMfa}>
+                <KeyRound />
+                Configurer le MFA
+              </button>
+            )}
+            {setup && (
+              <>
+                <div className="mfaSecret">
+                  <small>Clé à saisir dans l’application</small>
+                  <code>{setup.secret}</code>
+                  <small>{setup.otpauth_uri}</small>
+                </div>
+                <CodeForm action={confirm} label="Confirmer et activer" />
+              </>
+            )}
+            {mfa.enabled && (
+              <CodeForm action={disable} label="Désactiver le MFA" />
+            )}
+          </article>
+        )}
+        {editable && (
+          <article className="panel formPanel">
+            <h3>
+              <LockKeyhole /> Mot de passe
+            </h3>
+            <p className="hint">
+              12 caractères minimum avec majuscule, minuscule, chiffre et
+              caractère spécial.
+            </p>
+            <form onSubmit={password}>
+              <label>
+                Mot de passe actuel
+                <input
+                  name="current_password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              <label>
+                Nouveau mot de passe
+                <input
+                  name="new_password"
+                  type="password"
+                  minLength={12}
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+              <label>
+                Confirmation
+                <input
+                  name="confirm_password"
+                  type="password"
+                  minLength={12}
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+              <button className="primary">Changer le mot de passe</button>
+            </form>
+          </article>
+        )}
+        {!editable && (
+          <article className="panel">
+            <p className="readOnlyNotice">
+              Mode affichage : aucune configuration du compte n’est autorisée.
+            </p>
+          </article>
+        )}
       </div>
       {message && (
         <div className="panel" style={{ marginTop: 12 }}>

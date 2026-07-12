@@ -141,22 +141,22 @@ export function Ipam() {
                       {p.used} / {p.used + p.available} · {p.utilization}%
                     </span>
                   </td>
+                  <td>
+                    <span className={"badge " + p.status}>{p.status}</span>
+                  </td>
                   {administrative && (
                     <td>
-                      <span className={"badge " + p.status}>{p.status}</span>
+                      <div className="rowActions">
+                        <button
+                          className="danger"
+                          onClick={() => removePrefix(p)}
+                          title="Supprimer le préfixe"
+                        >
+                          <Trash2 />
+                        </button>
+                      </div>
                     </td>
                   )}
-                  <td>
-                    <div className="rowActions">
-                      <button
-                        className="danger"
-                        onClick={() => removePrefix(p)}
-                        title="Supprimer le préfixe"
-                      >
-                        <Trash2 />
-                      </button>
-                    </div>
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -191,31 +191,31 @@ export function Ipam() {
                 <td>
                   <span className="tag">{a.source}</span>
                 </td>
-                {editable && (
-                  <td>
-                    <span className={"dot " + a.status}></span>
-                    {a.status}
-                  </td>
-                )}
+                <td>
+                  <span className={"dot " + a.status}></span>
+                  {a.status}
+                </td>
                 <td>
                   {a.last_seen
                     ? new Date(a.last_seen).toLocaleString("fr")
                     : "—"}
                 </td>
-                <td>
-                  <div className="rowActions">
-                    <button
-                      className="danger"
-                      title="Retirer de l'IPAM"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeAddress(a);
-                      }}
-                    >
-                      <Trash2 />
-                    </button>
-                  </div>
-                </td>
+                {editable && (
+                  <td>
+                    <div className="rowActions">
+                      <button
+                        className="danger"
+                        title="Retirer de l'IPAM"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeAddress(a);
+                        }}
+                      >
+                        <Trash2 />
+                      </button>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

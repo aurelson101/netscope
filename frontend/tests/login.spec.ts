@@ -96,10 +96,45 @@ test("le lecteur ne voit pas les actions de modification", async ({ page }) => {
   await page.route("**/api/v1/assets**", (route) =>
     route.fulfill({ json: [] }),
   );
+  await page.route("**/api/v1/ipam/prefixes", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: "prefix-1",
+          prefix: "192.0.2.0/24",
+          name: "TV",
+          status: "active",
+          used: 1,
+          available: 253,
+          utilization: 1,
+        },
+      ],
+    }),
+  );
+  await page.route("**/api/v1/ipam/addresses", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: "address-1",
+          address: "192.0.2.10",
+          source: "manual",
+          status: "active",
+          last_seen: null,
+        },
+      ],
+    }),
+  );
   await page.goto("/#/assets");
   await expect(page.getByRole("button", { name: /ajouter/i })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /exporter/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /exporter/i })).toHaveCount(0);
   await expect(page.getByText("Lecteur", { exact: true })).toBeVisible();
+  await page.goto("/#/ipam");
+  await expect(
+    page.getByRole("button", { name: /supprimer|retirer/i }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /télécharger|exporter/i }),
+  ).toHaveCount(0);
 });
 
 test("l opérateur peut exploiter sans administrer les rapports", async ({
@@ -139,4 +174,49 @@ test("l opérateur peut exploiter sans administrer les rapports", async ({
   await page.goto("/#/reports");
   await expect(page.getByRole("button", { name: /envoyer/i })).toBeVisible();
   await expect(page.getByText(/planifier les rapports/i)).toHaveCount(0);
+});
+
+test("la vue infrastructure reste contenue à 1280 pixels", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.addInitScript(() => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem(
+      "user",
+      JSON.stringify({ id: "viewer-1", username: "tv", role: "viewer" }),
+    );
+  });
+  await page.route("**/api/v1/auth/me", (route) =>
+    route.fulfill({ json: { id: "viewer-1", username: "tv", role: "viewer" } }),
+  );
+  for (const endpoint of [
+    "assets",
+    "ipam/prefixes",
+    "networks",
+    "network-devices",
+    "vlans",
+  ]) {
+    await page.route(`**/api/v1/${endpoint}`, (route) =>
+      route.fulfill({ json: [] }),
+    );
+  }
+  await page.goto("/#/lab");
+  await expect(page.locator(".labCard")).toHaveCount(4);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    )
+    .toBe(true);
+  const columns = await page
+    .locator(".labCard")
+    .evaluateAll(
+      (cards) =>
+        new Set(
+          cards.map((card) => Math.round(card.getBoundingClientRect().top)),
+        ).size,
+    );
+  expect(columns).toBe(2);
 });

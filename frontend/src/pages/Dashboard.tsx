@@ -22,6 +22,7 @@ import {
 } from "recharts";
 import { api, downloadAssets } from "../lib/api";
 import { Layout } from "../components/Layout";
+import { canOperate, useCurrentUser } from "../lib/permissions";
 const colors = [
   "#408cff",
   "#35c979",
@@ -38,6 +39,7 @@ const go = (params: Record<string, string | number>) => {
     ).toString();
 };
 export function Dashboard() {
+  const editable = canOperate(useCurrentUser());
   const [d, setD] = useState<any>();
   useEffect(() => {
     api("/dashboard").then(setD);
@@ -59,9 +61,11 @@ export function Dashboard() {
     <Layout title="Tableau de bord">
       <div className="toolbar">
         <button>Dernières 24 heures</button>
-        <button className="button" onClick={downloadAssets}>
-          Exporter
-        </button>
+        {editable && (
+          <button className="button" onClick={downloadAssets}>
+            Exporter
+          </button>
+        )}
       </div>
       <div className="metrics">
         {cards.map(([l, v, I, c, filter]: any) => (
