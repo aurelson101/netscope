@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.2 — 2026-07-12
+
+- migrations Alembic compatibles avec les installations neuves et existantes ;
+- gestion des utilisateurs, rôles et sessions révocables ;
+- scans et rapports SMTP planifiés depuis l’interface ;
+- diagnostic interactif SNMP/OID et reconnaissance par enterprise OID ;
+- VRF, hiérarchie IPAM, plages et réservations DHCP ;
+- rapports PDF et sauvegardes versionnées de configuration ;
+- base OUI hors ligne, reverse proxy Caddy HTTPS et documentation associée ;
+- tests Playwright, CI GitHub Actions et correction du chemin d’import pytest.
+
 ## 0.0.1 — 2026-07-11
 
 Première version publique de NetScope.

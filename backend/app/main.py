@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
 
 configure_logging()
 logger=logging.getLogger("netscope.api")
-app=FastAPI(title=settings.app_name,version="0.0.1",lifespan=lifespan,docs_url="/api/docs",openapi_url="/api/openapi.json")
+app=FastAPI(title=settings.app_name,version="0.0.2",lifespan=lifespan,docs_url="/api/docs",openapi_url="/api/openapi.json")
 app.add_middleware(CORSMiddleware,allow_origins=settings.cors_list,allow_credentials=True,allow_methods=["GET","POST","PATCH","DELETE","OPTIONS"],allow_headers=["Authorization","Content-Type","X-MFA-Code"])
 app.include_router(router)
 

@@ -30,6 +30,10 @@ from app.services.vendors import MOBILE_VENDORS,normalize_vendor
 
 router = APIRouter(prefix="/api/v1")
 
+def validate_password_policy(value:str)->None:
+    if not (len(value)>=12 and any(c.islower() for c in value) and any(c.isupper() for c in value) and any(c.isdigit() for c in value) and any(not c.isalnum() for c in value)):
+        raise HTTPException(422,"Utilisez au moins 12 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial")
+
 
 @router.post("/auth/login")
 async def login(request:Request,form:OAuth2PasswordRequestForm=Depends(),x_mfa_code:str|None=Header(default=None),db:AsyncSession=Depends(get_db)):
@@ -77,6 +81,7 @@ async def list_users(db:AsyncSession=Depends(get_db),_=Depends(require(Role.admi
 
 @router.post("/users")
 async def create_user(data:UserCreate,db:AsyncSession=Depends(get_db),admin:User=Depends(require(Role.admin))):
+    validate_password_policy(data.password)
     if await db.scalar(select(User.id).where(func.lower(User.username)==data.username.casefold())):raise HTTPException(409,"Ce nom d'utilisateur existe déjà")
     row=User(username=data.username,password_hash=hash_password(data.password),role=Role(data.role));db.add(row);db.add(AuditLog(user_id=admin.id,action="user_created",details={"username":row.username,"role":data.role}));await db.commit();await db.refresh(row);return {"id":row.id,"username":row.username,"role":row.role.value,"active":row.active}
 
@@ -88,7 +93,7 @@ async def update_user(user_id:str,data:UserUpdate,db:AsyncSession=Depends(get_db
     if row.id==admin.id and values.get("active") is False:raise HTTPException(422,"Vous ne pouvez pas désactiver votre propre compte")
     if "role" in values:row.role=Role(values["role"])
     if "active" in values:row.active=values["active"]
-    if values.get("password"):row.password_hash=hash_password(values["password"])
+    if values.get("password"):validate_password_policy(values["password"]);row.password_hash=hash_password(values["password"])
     if "active" in values or values.get("password"):
         await db.execute(update(UserSession).where(UserSession.user_id==row.id,UserSession.revoked_at.is_(None)).values(revoked_at=datetime.now(timezone.utc)))
     db.add(AuditLog(user_id=admin.id,action="user_updated",details={"user_id":row.id,"fields":list(values)}));await db.commit();return {"updated":True}
@@ -106,7 +111,7 @@ async def revoke_user_sessions(user_id:str,db:AsyncSession=Depends(get_db),admin
 async def change_password(data:PasswordChange,db:AsyncSession=Depends(get_db),user:User=Depends(current_user)):
     if not verify_password(data.current_password,user.password_hash):raise HTTPException(422,"Mot de passe actuel incorrect")
     if data.current_password==data.new_password:raise HTTPException(422,"Le nouveau mot de passe doit être différent")
-    if not (any(c.islower() for c in data.new_password) and any(c.isupper() for c in data.new_password) and any(c.isdigit() for c in data.new_password) and any(not c.isalnum() for c in data.new_password)):raise HTTPException(422,"Utilisez une majuscule, une minuscule, un chiffre et un caractère spécial")
+    validate_password_policy(data.new_password)
     user.password_hash=hash_password(data.new_password);db.add(AuditLog(user_id=user.id,action="password_changed"));await db.commit();return {"changed":True}
 
 

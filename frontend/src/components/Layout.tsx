@@ -85,7 +85,7 @@ export function Layout({
           {user.role === "admin" && <Link href="#/users" icon={Users} label="Utilisateurs" />}
         </nav>
         <div className="asideFoot">
-          <span>NetScope v0.0.1</span>
+          <span>NetScope v0.0.2</span>
         </div>
       </aside>
       <main>

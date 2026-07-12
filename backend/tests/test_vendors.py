@@ -1,5 +1,5 @@
 import pytest
-from app.services.vendors import infer_mobile_identity,is_private_mac,normalize_mac,normalize_vendor
+from app.services.vendors import infer_mobile_identity,is_private_mac,normalize_mac,normalize_vendor,vendor_from_mac
 
 @pytest.mark.parametrize(("raw","expected"),[("Apple, Inc.","Apple"),("Samsung Electronics Co.,Ltd","Samsung"),("Google LLC","Google"),("Xiaomi Communications Co Ltd","Xiaomi"),("Motorola Mobility LLC","Motorola"),("HMD Global Oy","HMD"),("Shenzhen Transsion Holdings","Tecno"),("Cisco Systems","Cisco Systems")])
 def test_mobile_vendor_normalization(raw,expected):
@@ -18,3 +18,7 @@ def test_phone_mac_formats_are_normalized():
     assert normalize_mac("aa-bb-cc-dd-ee-ff")=="AA:BB:CC:DD:EE:FF"
     assert normalize_mac("aabb.ccdd.eeff")=="AA:BB:CC:DD:EE:FF"
     assert is_private_mac("02:11:22:33:44:55")
+
+def test_offline_oui_lookup_ignores_private_addresses():
+    assert vendor_from_mac("00:0C:29:12:34:56")=="VMware"
+    assert vendor_from_mac("02:0C:29:12:34:56") is None
