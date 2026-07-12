@@ -38,7 +38,8 @@ export function Scans() {
   }
   async function schedule(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
+    const form = e.currentTarget,
+      f = new FormData(form);
     try {
       await api("/scan-schedules", {
         method: "POST",
@@ -51,7 +52,7 @@ export function Scans() {
           enabled: true,
         }),
       });
-      e.currentTarget.reset();
+      form.reset();
       load();
     } catch (x: any) {
       setError(x.message);

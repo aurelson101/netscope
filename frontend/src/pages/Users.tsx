@@ -16,7 +16,8 @@ export function Users() {
   }, []);
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
+    const form = e.currentTarget,
+      f = new FormData(form);
     try {
       await api("/users", {
         method: "POST",
@@ -26,7 +27,7 @@ export function Users() {
           role: f.get("role"),
         }),
       });
-      e.currentTarget.reset();
+      form.reset();
       load();
     } catch (x: any) {
       setMessage(x.message);

@@ -1,5 +1,12 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Download, KeyRound, LockKeyhole, Save, ServerCog, ShieldCheck } from "lucide-react";
+import {
+  Download,
+  KeyRound,
+  LockKeyhole,
+  Save,
+  ServerCog,
+  ShieldCheck,
+} from "lucide-react";
 import { api, token } from "../lib/api";
 import { Layout } from "../components/Layout";
 export function Settings() {
@@ -11,7 +18,9 @@ export function Settings() {
   const load = () => {
     api<any[]>("/ipam/prefixes").then(setPrefixes);
     api("/auth/mfa/status").then(setMfa);
-    api<any[]>("/configuration/versions").then(setVersions).catch(()=>setVersions([]));
+    api<any[]>("/configuration/versions")
+      .then(setVersions)
+      .catch(() => setVersions([]));
   };
   useEffect(load, []);
   async function saveDns(e: FormEvent<HTMLFormElement>, id: string) {
@@ -109,8 +118,33 @@ export function Settings() {
       setMessage(x.message);
     }
   }
-  async function snapshot(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);try{await api("/configuration/versions",{method:"POST",body:JSON.stringify({comment:f.get("comment")||null})});e.currentTarget.reset();setMessage("Configuration versionnée");load()}catch(x:any){setMessage(x.message)}}
-  async function backup(id:string,version:number){const r=await fetch(`/api/v1/configuration/versions/${id}/backup`,{headers:{Authorization:`Bearer ${token()}`}}),url=URL.createObjectURL(await r.blob()),a=document.createElement("a");a.href=url;a.download=`netscope-config-v${version}.json`;a.click();URL.revokeObjectURL(url)}
+  async function snapshot(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget,
+      f = new FormData(form);
+    try {
+      await api("/configuration/versions", {
+        method: "POST",
+        body: JSON.stringify({ comment: f.get("comment") || null }),
+      });
+      form.reset();
+      setMessage("Configuration versionnée");
+      load();
+    } catch (x: any) {
+      setMessage(x.message);
+    }
+  }
+  async function backup(id: string, version: number) {
+    const r = await fetch(`/api/v1/configuration/versions/${id}/backup`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      }),
+      url = URL.createObjectURL(await r.blob()),
+      a = document.createElement("a");
+    a.href = url;
+    a.download = `netscope-config-v${version}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
   return (
     <Layout title="Paramètres">
       <div className="settingsGrid">
@@ -145,7 +179,31 @@ export function Settings() {
             </form>
           ))}
         </article>
-        <article className="panel formPanel"><h3><Save/>Versions de configuration</h3><form onSubmit={snapshot}><label>Commentaire<input name="comment" placeholder="Avant changement réseau…"/></label><button className="primary">Créer un instantané</button></form>{versions.map(v=><div className="rowActions" key={v.id}><span><b>v{v.version}</b> · {v.comment||new Date(v.created_at).toLocaleString("fr")}</span><button onClick={()=>backup(v.id,v.version)}><Download/>Sauvegarder</button></div>)}</article>
+        <article className="panel formPanel">
+          <h3>
+            <Save />
+            Versions de configuration
+          </h3>
+          <form onSubmit={snapshot}>
+            <label>
+              Commentaire
+              <input name="comment" placeholder="Avant changement réseau…" />
+            </label>
+            <button className="primary">Créer un instantané</button>
+          </form>
+          {versions.map((v) => (
+            <div className="rowActions" key={v.id}>
+              <span>
+                <b>v{v.version}</b> ·{" "}
+                {v.comment || new Date(v.created_at).toLocaleString("fr")}
+              </span>
+              <button onClick={() => backup(v.id, v.version)}>
+                <Download />
+                Sauvegarder
+              </button>
+            </div>
+          ))}
+        </article>
         <article className="panel formPanel">
           <h3>
             <ShieldCheck /> Authentification multifacteur

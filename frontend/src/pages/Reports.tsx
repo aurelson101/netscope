@@ -43,7 +43,8 @@ export function Reports() {
   }
   async function schedule(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
+    const form = e.currentTarget,
+      f = new FormData(form);
     try {
       await api("/report-schedules", {
         method: "POST",
@@ -60,7 +61,7 @@ export function Reports() {
           enabled: true,
         }),
       });
-      e.currentTarget.reset();
+      form.reset();
       load();
     } catch (x: any) {
       setMessage(x.message);
