@@ -9,15 +9,32 @@ export function AssetDetail({ id }: { id: string }) {
     [tab, setTab] = useState("overview"),
     [evidence, setEvidence] = useState<any[]>([]),
     [history, setHistory] = useState<any[]>([]),
-    [raw, setRaw] = useState<any[]>([]);
+    [raw, setRaw] = useState<any[]>([]),
+    [error, setError] = useState("");
   useEffect(() => {
-    api<Asset>("/assets/" + id).then(setA);
-    api<any[]>("/assets/" + id + "/evidence").then(setEvidence);
-    api<any[]>("/assets/" + id + "/history").then(setHistory);
+    api<Asset>("/assets/" + id)
+      .then(setA)
+      .catch((x) => setError(x.message));
+    api<any[]>("/assets/" + id + "/evidence")
+      .then(setEvidence)
+      .catch(() => setEvidence([]));
+    api<any[]>("/assets/" + id + "/history")
+      .then(setHistory)
+      .catch(() => setHistory([]));
     api<any[]>("/assets/" + id + "/raw-observations")
       .then(setRaw)
       .catch(() => setRaw([]));
   }, [id]);
+  if (error)
+    return (
+      <Layout title="Actif">
+        <a href="#/assets" className="back">
+          <ArrowLeft />
+          Retour à l’inventaire
+        </a>
+        <div className="error">Chargement impossible : {error}</div>
+      </Layout>
+    );
   if (!a)
     return (
       <Layout title="Actif">

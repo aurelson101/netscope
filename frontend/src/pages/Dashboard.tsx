@@ -40,10 +40,19 @@ const go = (params: Record<string, string | number>) => {
 };
 export function Dashboard() {
   const editable = canOperate(useCurrentUser());
-  const [d, setD] = useState<any>();
+  const [d, setD] = useState<any>(),
+    [error, setError] = useState("");
   useEffect(() => {
-    api("/dashboard").then(setD);
+    api("/dashboard")
+      .then(setD)
+      .catch((x) => setError(x.message));
   }, []);
+  if (error)
+    return (
+      <Layout title="Tableau de bord">
+        <div className="error">Chargement impossible : {error}</div>
+      </Layout>
+    );
   if (!d)
     return (
       <Layout title="Tableau de bord">

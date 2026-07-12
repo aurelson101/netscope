@@ -12,12 +12,18 @@ export function Scans() {
     [diagnostic, setDiagnostic] = useState<any>(),
     [error, setError] = useState("");
   const load = () => {
-    api<any[]>("/scans").then(setScans);
-    api<any[]>("/scan-profiles").then(setProfiles);
+    api<any[]>("/scans")
+      .then(setScans)
+      .catch((x) => setError(x.message));
+    api<any[]>("/scan-profiles")
+      .then(setProfiles)
+      .catch((x) => setError(x.message));
     api<any[]>("/credentials")
       .then(setCredentials)
       .catch(() => setCredentials([]));
-    api<any[]>("/scan-schedules").then(setSchedules);
+    api<any[]>("/scan-schedules")
+      .then(setSchedules)
+      .catch((x) => setError(x.message));
   };
   useEffect(load, []);
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -64,23 +70,33 @@ export function Scans() {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     setDiagnostic(undefined);
-    setDiagnostic(
-      await api("/snmp/test", {
-        method: "POST",
-        body: JSON.stringify({
-          target: f.get("target"),
-          credential_id: f.get("credential_id") || null,
-          oids: String(f.get("oids"))
-            .split(",")
-            .map((x) => x.trim())
-            .filter(Boolean),
+    try {
+      setDiagnostic(
+        await api("/snmp/test", {
+          method: "POST",
+          body: JSON.stringify({
+            target: f.get("target"),
+            credential_id: f.get("credential_id") || null,
+            oids: String(f.get("oids"))
+              .split(",")
+              .map((x) => x.trim())
+              .filter(Boolean),
+          }),
         }),
-      }),
-    );
+      );
+      setError("");
+    } catch (x: any) {
+      setError(x.message);
+    }
   }
   async function remove(id: string) {
-    await api("/scan-schedules/" + id, { method: "DELETE" });
-    load();
+    try {
+      await api("/scan-schedules/" + id, { method: "DELETE" });
+      setError("");
+      load();
+    } catch (x: any) {
+      setError(x.message);
+    }
   }
   async function removeScan(scan: any) {
     if (!confirm(`Supprimer le scan de ${scan.target} de l’historique ?`))
@@ -106,13 +122,13 @@ export function Scans() {
   }
   return (
     <Layout title="Scans de découverte">
+      {error && <div className="error">{error}</div>}
       <div className="split">
         <article className="panel formPanel">
           <h3>Nouveau scan</h3>
           {editable ? (
             <form onSubmit={submit}>
               <TargetFields profiles={profiles} credentials={credentials} />
-              {error && <div className="error">{error}</div>}
               <button className="primary">
                 <Play />
                 Lancer le scan

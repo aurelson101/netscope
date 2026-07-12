@@ -1,5 +1,16 @@
 const base = "/api/v1";
 export const token = () => localStorage.getItem("token");
+function errorDetail(payload: unknown, fallback: string): string {
+  const detail = (payload as any)?.detail ?? payload;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail))
+    return detail
+      .map((item) => item?.msg || item?.message || JSON.stringify(item))
+      .join(" · ");
+  if (detail && typeof detail === "object")
+    return detail.message || JSON.stringify(detail);
+  return fallback;
+}
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(base + path, {
     ...init,
@@ -11,12 +22,15 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   if (r.status === 401) {
     localStorage.removeItem("token");
+    localStorage.removeItem("user");
     location.hash = "#/login";
   }
-  if (!r.ok)
+  if (!r.ok) {
+    const payload = await r.json().catch(() => undefined);
     throw new Error(
-      (await r.json().catch(() => ({ detail: r.statusText }))).detail,
+      errorDetail(payload, r.statusText || `Erreur HTTP ${r.status}`),
     );
+  }
   return r.json();
 }
 export async function login(username: string, password: string, mfa?: string) {
@@ -30,10 +44,8 @@ export async function login(username: string, password: string, mfa?: string) {
     body,
   });
   if (!r.ok) {
-    const x = await r
-      .json()
-      .catch(() => ({ detail: "Identifiants invalides" }));
-    throw new Error(x.detail);
+    const payload = await r.json().catch(() => undefined);
+    throw new Error(errorDetail(payload, "Identifiants invalides"));
   }
   const data = await r.json();
   localStorage.setItem("token", data.access_token);

@@ -266,3 +266,25 @@ test("l opérateur peut supprimer un scan terminé de l historique", async ({
   await expect(page.getByText("192.0.2.0/24")).toHaveCount(0);
   expect(deleted).toBe(true);
 });
+
+test("les erreurs API structurées restent lisibles", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem(
+      "user",
+      JSON.stringify({ id: "viewer-1", username: "tv", role: "viewer" }),
+    );
+  });
+  await page.route("**/api/v1/auth/me", (route) =>
+    route.fulfill({ json: { id: "viewer-1", username: "tv", role: "viewer" } }),
+  );
+  await page.route("**/api/v1/dashboard", (route) =>
+    route.fulfill({
+      status: 422,
+      json: { detail: [{ msg: "Paramètre de dashboard invalide" }] },
+    }),
+  );
+  await page.goto("/#/");
+  await expect(page.getByText(/Paramètre de dashboard invalide/)).toBeVisible();
+  await expect(page.getByText(/\[object Object\]/)).toHaveCount(0);
+});
