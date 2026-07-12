@@ -1,4 +1,7 @@
 import re
+import csv
+from functools import lru_cache
+from pathlib import Path
 
 MOBILE_VENDORS=("Apple","Samsung","Google","Xiaomi","Redmi","Poco","Huawei","Honor","Oppo","OnePlus","Realme","Vivo","Motorola","Lenovo","Nokia","HMD","Sony","Asus","Nothing","Fairphone","ZTE","Nubia","TCL","Alcatel","Tecno","Infinix","Itel","Meizu","Sharp","Kyocera","LG","HTC","BlackBerry","Microsoft","Cat","Doogee","Ulefone","Oukitel","Wiko")
 ALIASES={"APPLE INC":"Apple","APPLE COMPUTER":"Apple","SAMSUNG ELECTRONICS":"Samsung","SAMSUNG ELEC":"Samsung","GOOGLE INC":"Google","GOOGLE LLC":"Google","XIAOMI COMMUNICATIONS":"Xiaomi","BEIJING XIAOMI":"Xiaomi","HUAWEI TECHNOLOGIES":"Huawei","HONOR DEVICE":"Honor","GUANGDONG OPPO":"Oppo","ONEPLUS TECHNOLOGY":"OnePlus","REALME MOBILE":"Realme","VIVO MOBILE":"Vivo","MOTOROLA MOBILITY":"Motorola","HMD GLOBAL":"HMD","SONY MOBILE":"Sony","NOTHING TECHNOLOGY":"Nothing","FAIRPHONE B.V":"Fairphone","ZTE CORPORATION":"ZTE","TCL COMMUNICATION":"TCL","TCT MOBILE":"Alcatel","TECNO MOBILE":"Tecno","INFINIX MOBILITY":"Infinix","SHENZHEN TRANSSION":"Tecno","LG ELECTRONICS":"LG","HTC CORPORATION":"HTC","ASUSTEK COMPUTER":"Asus"}
@@ -31,3 +34,15 @@ def normalize_mac(value:str|None)->str|None:
 def is_private_mac(value:str|None)->bool:
     normalized=normalize_mac(value)
     return bool(normalized and int(normalized[:2],16)&2)
+
+@lru_cache
+def offline_oui()->dict[str,str]:
+    path=Path(__file__).parents[3]/"data"/"oui"/"oui.csv"
+    if not path.exists():path=Path(__file__).parents[1]/"data"/"oui.csv"
+    if not path.exists():return {}
+    with path.open(encoding="utf-8") as handle:return {row["prefix"].upper():row["vendor"] for row in csv.DictReader(handle)}
+
+def vendor_from_mac(value:str|None)->str|None:
+    mac=normalize_mac(value)
+    if not mac or is_private_mac(mac):return None
+    return normalize_vendor(offline_oui().get(mac.replace(":","")[:6]))

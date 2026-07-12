@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Role, User
+from app.models import Role, User, UserSession
 
 password_hash = PasswordHash.recommended()
 oauth2 = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -27,14 +27,21 @@ def create_token(user: User) -> str:
     return jwt.encode({"sub":user.id,"role":user.role.value,"iat":now,"exp":expiry,"jti":str(uuid.uuid4()),"iss":"netscope","aud":"netscope-api"},settings.secret_key,algorithm="HS256")
 
 
+def decode_token(token: str) -> dict:
+    return jwt.decode(token,settings.secret_key,algorithms=["HS256"],issuer="netscope",audience="netscope-api",options={"require":["sub","iat","exp","jti"]})
+
+
 async def current_user(token: str = Depends(oauth2), db: AsyncSession = Depends(get_db)) -> User:
     try:
-        payload=jwt.decode(token,settings.secret_key,algorithms=["HS256"],issuer="netscope",audience="netscope-api",options={"require":["sub","iat","exp","jti"]})
+        payload=decode_token(token)
     except jwt.PyJWTError as exc:
         raise HTTPException(401, "Jeton invalide", headers={"WWW-Authenticate": "Bearer"}) from exc
     user = await db.get(User, payload.get("sub"))
     if not user or not user.active:
         raise HTTPException(401, "Utilisateur inactif")
+    session=await db.get(UserSession,payload["jti"])
+    if not session or session.revoked_at or session.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(401,"Session révoquée",headers={"WWW-Authenticate":"Bearer"})
     return user
 
 

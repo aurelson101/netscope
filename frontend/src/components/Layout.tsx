@@ -14,7 +14,9 @@ import {
   ScanSearch,
   Server,
   Settings,
+  Users,
 } from "lucide-react";
+import {api} from "../lib/api";
 import { ReactNode, useState } from "react";
 const nav = [
   ["Tableau de bord", ChartNoAxesCombined, "#/"],
@@ -80,6 +82,7 @@ export function Layout({
           <Link href="#/reports" icon={FileText} label="Rapports" />
           <Link href="#/archives" icon={Archive} label="Archives" />
           <Link href="#/settings" icon={Settings} label="Paramètres" />
+          {user.role === "admin" && <Link href="#/users" icon={Users} label="Utilisateurs" />}
         </nav>
         <div className="asideFoot">
           <span>NetScope v0.0.1</span>
@@ -99,7 +102,8 @@ export function Layout({
             <button
               className="icon"
               title="Déconnexion"
-              onClick={() => {
+              onClick={async () => {
+                try { await api("/auth/logout", {method:"POST"}); } catch {}
                 localStorage.clear();
                 location.hash = "#/login";
               }}

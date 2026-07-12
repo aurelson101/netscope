@@ -1,14 +1,21 @@
 # Feuille de route
 
-Priorités proposées après la version 0.0.1 :
+## Livré le 12 juillet 2026
 
-1. ajouter des migrations Alembic versionnées et testées ;
-2. créer une gestion complète des utilisateurs, rôles et révocation de sessions ;
-3. ajouter un planificateur de scans modifiable dans l’interface ;
-4. proposer un test SNMP interactif et un diagnostic des OID/MIB par équipement ;
-5. ajouter VRF, plages IP, réservations DHCP et hiérarchie IPAM ;
-6. exporter les rapports en PDF et planifier leur envoi SMTP ;
-7. ajouter des tests navigateur end-to-end et une CI GitHub Actions ;
-8. versionner et sauvegarder les configurations applicatives ;
-9. prendre en charge HTTPS directement ou documenter un reverse proxy prêt à l’emploi ;
-10. enrichir les plugins constructeurs et la base OUI hors ligne.
+- [x] Migrations Alembic versionnées, exécutées au démarrage et testées en montée/descente.
+- [x] Gestion des utilisateurs, rôles, activation des comptes et révocation des sessions.
+- [x] Planificateur de scans persistant et modifiable depuis l’interface.
+- [x] Test SNMP interactif et diagnostic des OID par équipement.
+- [x] VRF, hiérarchie IPAM, plages IP et réservations DHCP.
+- [x] Exports CSV/PDF et planification des envois SMTP.
+- [x] Tests navigateur Playwright et CI GitHub Actions.
+- [x] Versionnement et sauvegarde JSON des configurations applicatives.
+- [x] Reverse proxy Caddy HTTPS prêt à l’emploi et documenté.
+- [x] Reconnaissance des constructeurs par enterprise OID et base OUI hors ligne.
+
+## Prochaines améliorations
+
+- [ ] Ajouter des migrations incrémentales pour chaque évolution future du schéma.
+- [ ] Étendre les diagnostics aux MIB propriétaires installables par constructeur.
+- [ ] Ajouter un scénario Playwright couvrant IPAM, les scans planifiés et les rapports.
+- [ ] Automatiser le rafraîchissement vérifié de la base OUI hors ligne.

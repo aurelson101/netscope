@@ -287,6 +287,8 @@ Après cinq mots de passe incorrects, NetScope bloque les essais pendant cinq mi
 
 ## 9. Sécurité avant exposition
 
+Un exemple Caddy complet est fourni dans [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md). Il active HTTPS, HSTS, le renouvellement automatique du certificat et les journaux JSON. Lorsque Caddy tourne sur le même hôte, définissez `HTTP_BIND=127.0.0.1`.
+
 - changez tous les secrets de `.env` ;
 - activez le MFA ;
 - n’exposez pas directement le port 8080 sur Internet ;
@@ -311,9 +313,7 @@ Le scanner dispose de capacités réseau élevées nécessaires à Nmap. N’ajo
 
 ## Limites actuelles
 
-- le planificateur récurrent n’a pas encore d’éditeur complet dans l’interface ;
 - les MIB propriétaires peuvent nécessiter une adaptation par constructeur ;
-- les migrations de schéma sont automatiques pour cette version ; une chaîne Alembic versionnée reste recommandée avant une exploitation critique ;
 - NetScope est un outil d’inventaire et ne remplace pas un scanner de vulnérabilités ou un SIEM.
 
 ## Licence

@@ -32,6 +32,29 @@ class ScanCreate(BaseModel):
     confirm_large_network: bool = False
     confirm_public_network: bool = False
 
+class ScanScheduleCreate(BaseModel):
+    name: str = Field(min_length=2,max_length=120)
+    target: str
+    profile_id: str
+    credential_id: str | None = None
+    interval_minutes: int = Field(ge=5,le=525600)
+    enabled: bool = True
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=3,max_length=80,pattern=r"^[A-Za-z0-9_.-]+$")
+    password: str = Field(min_length=12,max_length=256)
+    role: str = Field(pattern=r"^(admin|operator|viewer)$")
+
+class UserUpdate(BaseModel):
+    role: str | None = Field(default=None,pattern=r"^(admin|operator|viewer)$")
+    active: bool | None = None
+    password: str | None = Field(default=None,min_length=12,max_length=256)
+
+class SnmpTest(BaseModel):
+    target: str
+    credential_id: str | None = None
+    oids: list[str] = Field(default=["1.3.6.1.2.1.1.1.0","1.3.6.1.2.1.1.2.0","1.3.6.1.2.1.1.5.0"],min_length=1,max_length=20)
+
 
 class ScanOut(BaseModel):
     id: str
@@ -107,6 +130,8 @@ class PrefixCreate(BaseModel):
     role: str | None = None
     vlan_id: str | None = None
     site_id: str | None = None
+    vrf_id: str | None = None
+    parent_id: str | None = None
     gateway: str | None = None
     dns_servers: list[str] = []
     description: str | None = None
@@ -134,6 +159,38 @@ class ReportEmail(BaseModel):
     recipients: list[str] = Field(min_length=1,max_length=20)
     subject: str | None = Field(default=None,max_length=200)
     message: str | None = Field(default=None,max_length=2000)
+    format: str = Field(default="pdf",pattern=r"^(csv|pdf)$")
+
+class ReportScheduleCreate(BaseModel):
+    name: str = Field(min_length=2,max_length=120)
+    report_type: str = Field(pattern=r"^(inventory|ipam|scans|vendors|security)$")
+    format: str = Field(default="pdf",pattern=r"^(csv|pdf)$")
+    sender: str = Field(min_length=3,max_length=254)
+    recipients: list[str] = Field(min_length=1,max_length=20)
+    interval_minutes: int = Field(ge=15,le=525600)
+    enabled: bool = True
+
+class VrfCreate(BaseModel):
+    name: str = Field(min_length=1,max_length=120)
+    route_distinguisher: str | None = Field(default=None,max_length=80)
+    description: str | None = None
+
+class IpRangeCreate(BaseModel):
+    prefix_id: str
+    start_address: str
+    end_address: str
+    role: str = Field(default="dhcp",max_length=40)
+    description: str | None = None
+
+class DhcpReservationCreate(BaseModel):
+    prefix_id: str
+    address: str
+    mac_address: str = Field(pattern=r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
+    hostname: str | None = Field(default=None,max_length=255)
+    description: str | None = None
+
+class ConfigurationSnapshotCreate(BaseModel):
+    comment: str | None = Field(default=None,max_length=255)
 
 
 class IpAddressCreate(BaseModel):

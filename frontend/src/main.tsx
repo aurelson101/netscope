@@ -42,6 +42,7 @@ const Datacenter = lazy(() =>
   Vendors = lazy(() =>
     import("./pages/Vendors").then((x) => ({ default: x.Vendors })),
   ),
+  Users = lazy(() => import("./pages/Users").then((x) => ({ default: x.Users }))),
   Layout = lazy(() =>
     import("./components/Layout").then((x) => ({ default: x.Layout })),
   );
@@ -56,6 +57,7 @@ function App() {
     return <AssetDetail id={path.split("/")[2]} />;
   if (path === "/ipam") return <Ipam />;
   if (path === "/settings") return <Settings />;
+  if (path === "/users") return <Users />;
   if (path === "/reports") return <Reports />;
   if (path === "/archives") return <Archives />;
   if (path === "/vendors") return <Vendors />;

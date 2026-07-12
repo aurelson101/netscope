@@ -17,3 +17,4 @@ pytest-asyncio==1.4.0
 cryptography==49.0.0
 dnspython==2.7.0
 pyotp==2.9.0
+reportlab==4.4.2

@@ -1,6 +1,6 @@
 import asyncio
 import ipaddress
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from celery import Celery
 from celery.signals import after_setup_logger
 from sqlalchemy import select
@@ -15,11 +15,12 @@ from app.discovery.nmap.plugin import NmapPlugin
 from app.discovery.snmp.plugin import SnmpPlugin
 from app.correlation.engine import correlate
 from app.core.secrets import decrypt_secret
-from app.models import Credential, IpamPrefix, ScanJob, ScanProfile
+from app.models import Credential, IpamPrefix, ReportSchedule, ScanJob, ScanProfile, ScanSchedule
 
 configure_logging();logger=logging.getLogger("netscope.worker")
 celery=Celery("netscope",broker=settings.redis_url,backend=settings.redis_url)
 celery.conf.task_routes={"execute_scan":{"queue":"scanner"}}
+celery.conf.beat_schedule={"dispatch-due-schedules":{"task":"dispatch_due_schedules","schedule":60.0}}
 plugins={p.name:p for p in [IcmpPlugin(),ArpPlugin(),NmapPlugin(),DNSPlugin(),SnmpPlugin()]}
 
 def module_targets(module:str,target:str,discovered:set[str])->list[str]:
@@ -75,3 +76,42 @@ async def _execute(job_id:str):
             logger.exception("scan_failed",extra={"job_id":job_id})
             return
         job.finished_at=datetime.now(timezone.utc); await db.commit();logger.info("scan_completed",extra={"job_id":job.id,"target":job.target})
+
+@celery.task(name="dispatch_due_schedules")
+def dispatch_due_schedules():return asyncio.run(_dispatch_due())
+
+async def _dispatch_due():
+    now=datetime.now(timezone.utc)
+    async with SessionLocal() as db:
+        scans=(await db.execute(select(ScanSchedule).where(ScanSchedule.enabled.is_(True),ScanSchedule.next_run_at<=now))).scalars().all()
+        for schedule in scans:
+            active=await db.scalar(select(ScanJob.id).where(ScanJob.target==schedule.target,ScanJob.status.in_(["queued","running"])).limit(1))
+            if not active:
+                job=ScanJob(target=schedule.target,profile_id=schedule.profile_id,credential_id=schedule.credential_id,created_by=schedule.created_by);db.add(job);await db.flush();execute_scan.apply_async(args=[job.id],queue="scanner")
+            schedule.last_run_at=now;schedule.next_run_at=now+timedelta(minutes=schedule.interval_minutes)
+        reports=(await db.execute(select(ReportSchedule).where(ReportSchedule.enabled.is_(True),ReportSchedule.next_run_at<=now))).scalars().all()
+        for schedule in reports:
+            send_scheduled_report.delay(schedule.id);schedule.last_run_at=now;schedule.next_run_at=now+timedelta(minutes=schedule.interval_minutes)
+        await db.commit()
+    return {"scans":len(scans),"reports":len(reports)}
+
+@celery.task(name="send_scheduled_report")
+def send_scheduled_report(schedule_id:str):return asyncio.run(_send_scheduled_report(schedule_id))
+
+async def _send_scheduled_report(schedule_id:str):
+    import smtplib
+    from email.message import EmailMessage
+    from app.api.router import REPORT_LABELS,build_report,report_pdf
+    async with SessionLocal() as db:
+        schedule=await db.get(ReportSchedule,schedule_id)
+        if not schedule or not schedule.enabled:return
+        filename,content=await build_report(schedule.report_type,db);msg=EmailMessage();msg["From"]=schedule.sender;msg["To"]=", ".join(schedule.recipients);msg["Subject"]=f"NetScope — {REPORT_LABELS[schedule.report_type]}";msg.set_content("Rapport NetScope planifié en pièce jointe.")
+        if schedule.format=="pdf":filename=filename.removesuffix(".csv")+".pdf";msg.add_attachment(report_pdf(schedule.report_type,content),maintype="application",subtype="pdf",filename=filename)
+        else:msg.add_attachment(content.encode("utf-8-sig"),maintype="text",subtype="csv",filename=filename)
+        def send():
+            cls=smtplib.SMTP_SSL if settings.smtp_use_ssl else smtplib.SMTP
+            with cls(settings.smtp_host,settings.smtp_port,timeout=settings.smtp_timeout) as client:
+                if settings.smtp_use_tls and not settings.smtp_use_ssl:client.starttls()
+                if settings.smtp_username:client.login(settings.smtp_username,settings.smtp_password)
+                client.send_message(msg)
+        await asyncio.to_thread(send)

@@ -35,6 +35,17 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ip_address: Mapped[str | None] = mapped_column(String(64))
+    user_agent: Mapped[str | None] = mapped_column(String(255))
+
+
 class Site(Base):
     __tablename__ = "sites"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -72,6 +83,21 @@ class ScanJob(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class ScanSchedule(Base):
+    __tablename__ = "scan_schedules"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    target: Mapped[str] = mapped_column(String(64))
+    profile_id: Mapped[str] = mapped_column(ForeignKey("scan_profiles.id"))
+    credential_id: Mapped[str | None] = mapped_column(ForeignKey("credentials.id"))
+    interval_minutes: Mapped[int] = mapped_column(Integer, default=1440)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class Asset(Base):
@@ -274,6 +300,8 @@ class IpamPrefix(Base):
     role: Mapped[str | None] = mapped_column(String(80))
     vlan_id: Mapped[str | None] = mapped_column(ForeignKey("vlans.id"))
     site_id: Mapped[str | None] = mapped_column(ForeignKey("sites.id"))
+    vrf_id: Mapped[str | None] = mapped_column(ForeignKey("vrfs.id"))
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey("ipam_prefixes.id"))
     gateway: Mapped[str | None] = mapped_column(String(64))
     dns_servers: Mapped[list] = mapped_column(JSON, default=list)
     description: Mapped[str | None] = mapped_column(Text)
@@ -292,6 +320,62 @@ class IpamAddress(Base):
     description: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(30), default="manual")
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Vrf(Base):
+    __tablename__ = "vrfs"
+    __table_args__ = (UniqueConstraint("name", "route_distinguisher"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(120), index=True)
+    route_distinguisher: Mapped[str | None] = mapped_column(String(80))
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class IpRange(Base):
+    __tablename__ = "ip_ranges"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    prefix_id: Mapped[str] = mapped_column(ForeignKey("ipam_prefixes.id"), index=True)
+    start_address: Mapped[str] = mapped_column(String(64))
+    end_address: Mapped[str] = mapped_column(String(64))
+    role: Mapped[str] = mapped_column(String(40), default="dhcp")
+    description: Mapped[str | None] = mapped_column(Text)
+
+
+class DhcpReservation(Base):
+    __tablename__ = "dhcp_reservations"
+    __table_args__ = (UniqueConstraint("prefix_id", "address"), UniqueConstraint("prefix_id", "mac_address"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    prefix_id: Mapped[str] = mapped_column(ForeignKey("ipam_prefixes.id"), index=True)
+    address: Mapped[str] = mapped_column(String(64), index=True)
+    mac_address: Mapped[str] = mapped_column(String(32), index=True)
+    hostname: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ReportSchedule(Base):
+    __tablename__ = "report_schedules"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    report_type: Mapped[str] = mapped_column(String(40))
+    format: Mapped[str] = mapped_column(String(10), default="pdf")
+    sender: Mapped[str] = mapped_column(String(254))
+    recipients: Mapped[list] = mapped_column(JSON, default=list)
+    interval_minutes: Mapped[int] = mapped_column(Integer, default=10080)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ConfigurationVersion(Base):
+    __tablename__ = "configuration_versions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    version: Mapped[int] = mapped_column(Integer, unique=True)
+    snapshot: Mapped[dict] = mapped_column(JSON)
+    comment: Mapped[str | None] = mapped_column(String(255))
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

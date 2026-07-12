@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.discovery.base import DiscoveryResult
 from app.models import Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, Evidence, IpamAddress, IpamPrefix, RawObservation
-from app.services.vendors import infer_mobile_identity,normalize_mac,normalize_vendor
+from app.services.vendors import infer_mobile_identity,normalize_mac,normalize_vendor,vendor_from_mac
 
 
 NORMAL_VENDOR={"CISCO SYSTEMS, INC.":"Cisco","CISCO SYSTEMS":"Cisco","HP INC.":"HP Inc.","HEWLETT PACKARD ENTERPRISE":"HPE","UBIQUITI NETWORKS":"Ubiquiti"}
@@ -40,6 +40,9 @@ async def correlate(db: AsyncSession, result: DiscoveryResult, scan_id: str | No
     if mac:
         identifier=(await db.execute(select(AssetIdentifier).where(AssetIdentifier.asset_id==asset.id,AssetIdentifier.kind=="mac",AssetIdentifier.value==mac))).scalar_one_or_none()
         if not identifier: db.add(AssetIdentifier(asset_id=asset.id,kind="mac",value=mac,confidence=1))
+        if "manufacturer" not in facts:
+            oui_vendor=vendor_from_mac(mac)
+            if oui_vendor:facts["manufacturer"]={"field":"manufacturer","value":oui_vendor,"confidence":0.85}
     mapping={"hostname":"hostname","manufacturer":"manufacturer","model":"model","device_type":"device_type","operating_system":"operating_system"}
     metadata=await db.get(AssetMetadata,asset.id)
     locked=set((metadata.custom_fields or {}).get("_locked_identity_fields",[])) if metadata else set()

@@ -9,6 +9,7 @@ OIDS={
  "bridge_ports":"1.3.6.1.2.1.17.1.4.1.2",
  "lldp":"1.0.8802.1.1.2.1.4", "cdp":"1.3.6.1.4.1.9.9.23.1.2.1.1",
 }
+ENTERPRISE_VENDORS={"9":"Cisco","11":"HPE","2636":"Juniper Networks","12356":"Fortinet","25461":"Palo Alto Networks","41112":"Ubiquiti","14988":"MikroTik","2011":"Huawei","674":"Dell","30065":"Arista"}
 
 
 class SnmpPlugin(DiscoveryPlugin):
@@ -39,4 +40,7 @@ class SnmpPlugin(DiscoveryPlugin):
             if oid.endswith(".1.0"):facts.append({"field":"snmp_sysdescr","value":value,"confidence":0.98})
             elif oid.endswith(".5.0"):facts.append({"field":"hostname","value":value,"confidence":0.98})
             elif oid.endswith(".2.0"):facts.append({"field":"snmp_sysobjectid","value":value,"confidence":1.0})
+        object_id=next((f["value"] for f in facts if f["field"]=="snmp_sysobjectid"),"")
+        match=next((vendor for enterprise,vendor in ENTERPRISE_VENDORS.items() if f".1.3.6.1.4.1.{enterprise}." in f".{object_id}." or f"enterprises.{enterprise}." in f"{object_id}."),None)
+        if match:facts.append({"field":"manufacturer","value":match,"confidence":0.99})
         return [DiscoveryResult(self.name,target,{"sections":sections},facts)]
