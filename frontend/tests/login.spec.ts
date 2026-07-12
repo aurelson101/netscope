@@ -156,7 +156,9 @@ test("l opérateur peut exploiter sans administrer les rapports", async ({
     }),
   );
   await page.route("**/api/v1/reports/options", (route) =>
-    route.fulfill({ json: { assets: [], sites: [], vlans: [] } }),
+    route.fulfill({
+      json: [{ id: "inventory", label: "Inventaire des équipements" }],
+    }),
   );
   await page.route("**/api/v1/report-schedules", (route) =>
     route.fulfill({ json: [] }),
@@ -174,6 +176,8 @@ test("l opérateur peut exploiter sans administrer les rapports", async ({
   await page.goto("/#/reports");
   await expect(page.getByRole("button", { name: /envoyer/i })).toBeVisible();
   await expect(page.getByText(/planifier les rapports/i)).toHaveCount(0);
+  await page.getByRole("button", { name: "CSV" }).click();
+  await expect(page.getByText("Non simulé")).toBeVisible();
 });
 
 test("la vue infrastructure reste contenue à 1280 pixels", async ({ page }) => {

@@ -84,6 +84,14 @@ export function Assets() {
       setError(x.message);
     }
   }
+  async function exportAssets() {
+    try {
+      await downloadAssets();
+      setError("");
+    } catch (x: any) {
+      setError(x.message);
+    }
+  }
   const labels: Record<string, string> = {
     status: "Statut",
     device_type: "Type",
@@ -109,7 +117,7 @@ export function Assets() {
           </button>
         )}
         {editable && (
-          <button className="button" onClick={downloadAssets}>
+          <button className="button" onClick={exportAssets}>
             <Download />
             Exporter CSV
           </button>

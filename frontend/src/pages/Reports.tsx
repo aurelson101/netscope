@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Download, FileText, Mail, Send, Trash2 } from "lucide-react";
-import { api, token } from "../lib/api";
+import { api, downloadFile } from "../lib/api";
 import { Layout } from "../components/Layout";
 import { canOperate, isAdmin, useCurrentUser } from "../lib/permissions";
 export function Reports() {
@@ -12,7 +12,9 @@ export function Reports() {
     [schedules, setSchedules] = useState<any[]>([]),
     [message, setMessage] = useState("");
   const load = () => {
-    api<any[]>("/reports/options").then(setOptions);
+    api<any[]>("/reports/options")
+      .then(setOptions)
+      .catch((x) => setMessage(x.message));
     api("/smtp/status")
       .then(setSmtp)
       .catch(() => setSmtp({ configured: false, senders: [] }));
@@ -72,8 +74,13 @@ export function Reports() {
     }
   }
   async function remove(id: string) {
-    await api("/report-schedules/" + id, { method: "DELETE" });
-    load();
+    try {
+      await api("/report-schedules/" + id, { method: "DELETE" });
+      setMessage("");
+      load();
+    } catch (x: any) {
+      setMessage(x.message);
+    }
   }
   async function toggle(row: any) {
     try {
@@ -87,16 +94,15 @@ export function Reports() {
     }
   }
   async function download(kind: string, format: string) {
-    const r = await fetch(`/api/v1/reports/${kind}.${format}`, {
-        headers: { Authorization: `Bearer ${token()}` },
-      }),
-      blob = await r.blob(),
-      url = URL.createObjectURL(blob),
-      a = document.createElement("a");
-    a.href = url;
-    a.download = `netscope-${kind}.${format}`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      await downloadFile(
+        `/reports/${kind}.${format}`,
+        `netscope-${kind}.${format}`,
+      );
+      setMessage("");
+    } catch (x: any) {
+      setMessage(x.message);
+    }
   }
   return (
     <Layout title="Rapports">

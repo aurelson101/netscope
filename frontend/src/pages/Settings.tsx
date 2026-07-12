@@ -7,7 +7,7 @@ import {
   ServerCog,
   ShieldCheck,
 } from "lucide-react";
-import { api, token } from "../lib/api";
+import { api, downloadFile } from "../lib/api";
 import { Layout } from "../components/Layout";
 import { canOperate, isAdmin, useCurrentUser } from "../lib/permissions";
 export function Settings() {
@@ -20,8 +20,12 @@ export function Settings() {
     [versions, setVersions] = useState<any[]>([]),
     [message, setMessage] = useState("");
   const load = () => {
-    api<any[]>("/ipam/prefixes").then(setPrefixes);
-    api("/auth/mfa/status").then(setMfa);
+    api<any[]>("/ipam/prefixes")
+      .then(setPrefixes)
+      .catch((x) => setMessage(x.message));
+    api("/auth/mfa/status")
+      .then(setMfa)
+      .catch((x) => setMessage(x.message));
     api<any[]>("/configuration/versions")
       .then(setVersions)
       .catch(() => setVersions([]));
@@ -139,15 +143,15 @@ export function Settings() {
     }
   }
   async function backup(id: string, version: number) {
-    const r = await fetch(`/api/v1/configuration/versions/${id}/backup`, {
-        headers: { Authorization: `Bearer ${token()}` },
-      }),
-      url = URL.createObjectURL(await r.blob()),
-      a = document.createElement("a");
-    a.href = url;
-    a.download = `netscope-config-v${version}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      await downloadFile(
+        `/configuration/versions/${id}/backup`,
+        `netscope-config-v${version}.json`,
+      );
+      setMessage("");
+    } catch (x: any) {
+      setMessage(x.message);
+    }
   }
   return (
     <Layout title="Paramètres">

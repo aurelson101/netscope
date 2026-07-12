@@ -41,7 +41,8 @@ const go = (params: Record<string, string | number>) => {
 export function Dashboard() {
   const editable = canOperate(useCurrentUser());
   const [d, setD] = useState<any>(),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [message, setMessage] = useState("");
   useEffect(() => {
     api("/dashboard")
       .then(setD)
@@ -66,12 +67,15 @@ export function Dashboard() {
     ["Nouveaux actifs", d.new_24h, Radio, "purple", { recent_hours: 24 }],
     ["Inconnus", d.unknown, HelpCircle, "yellow", { status: "unknown" }],
   ];
+  const exportAssets = () =>
+    downloadAssets().catch((x) => setMessage(x.message));
   return (
     <Layout title="Tableau de bord">
+      {message && <div className="error">{message}</div>}
       <div className="toolbar">
         <button>Dernières 24 heures</button>
         {editable && (
-          <button className="button" onClick={downloadAssets}>
+          <button className="button" onClick={exportAssets}>
             Exporter
           </button>
         )}

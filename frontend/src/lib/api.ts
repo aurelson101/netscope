@@ -51,18 +51,30 @@ export async function login(username: string, password: string, mfa?: string) {
   localStorage.setItem("token", data.access_token);
   localStorage.setItem("user", JSON.stringify(data.user));
 }
-export async function downloadAssets() {
-  const r = await fetch(base + "/assets/export.csv", {
+export async function downloadFile(path: string, filename: string) {
+  const r = await fetch(base + path, {
     headers: { Authorization: `Bearer ${token()}` },
   });
-  if (!r.ok) throw new Error("Export impossible");
+  if (r.status === 401) {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    location.hash = "#/login";
+  }
+  if (!r.ok) {
+    const payload = await r.json().catch(() => undefined);
+    throw new Error(
+      errorDetail(payload, r.statusText || "Téléchargement impossible"),
+    );
+  }
   const url = URL.createObjectURL(await r.blob());
   const link = document.createElement("a");
   link.href = url;
-  link.download = "netscope-assets.csv";
+  link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
 }
+export const downloadAssets = () =>
+  downloadFile("/assets/export.csv", "netscope-assets.csv");
 export type Asset = {
   id: string;
   status: string;
