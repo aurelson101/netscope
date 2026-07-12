@@ -43,7 +43,9 @@ const Datacenter = lazy(() =>
   Vendors = lazy(() =>
     import("./pages/Vendors").then((x) => ({ default: x.Vendors })),
   ),
-  Users = lazy(() => import("./pages/Users").then((x) => ({ default: x.Users }))),
+  Users = lazy(() =>
+    import("./pages/Users").then((x) => ({ default: x.Users })),
+  ),
   Layout = lazy(() =>
     import("./components/Layout").then((x) => ({ default: x.Layout })),
   );

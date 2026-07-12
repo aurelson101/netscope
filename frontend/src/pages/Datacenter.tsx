@@ -1,8 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Building2, Globe2, Plus, Server, Trash2 } from "lucide-react";
 import { api, Asset } from "../lib/api";
+import { canOperate, isAdmin, useCurrentUser } from "../lib/permissions";
 import { Layout } from "../components/Layout";
 export function Datacenter() {
+  const user = useCurrentUser(),
+    editable = canOperate(user),
+    administrative = isAdmin(user);
   const [tab, setTab] = useState("overview"),
     [sites, setSites] = useState<any[]>([]),
     [vlans, setVlans] = useState<any[]>([]),
@@ -160,24 +164,27 @@ export function Datacenter() {
             vlans={vlans}
             prefixByVlan={prefixByVlan}
             remove={removeVlan}
+            canDelete={administrative}
           />
         </>
       )}
       {tab === "sites" && (
         <div className="split">
-          <Form title="Ajouter un site / lieu" submit={site}>
-            <label>
-              Nom
-              <input name="name" required placeholder="Datacenter Paris" />
-            </label>
-            <label>
-              Description
-              <input
-                name="description"
-                placeholder="Bâtiment, salle, adresse…"
-              />
-            </label>
-          </Form>
+          {editable && (
+            <Form title="Ajouter un site / lieu" submit={site}>
+              <label>
+                Nom
+                <input name="name" required placeholder="Datacenter Paris" />
+              </label>
+              <label>
+                Description
+                <input
+                  name="description"
+                  placeholder="Bâtiment, salle, adresse…"
+                />
+              </label>
+            </Form>
+          )}
           <article className="panel tablePanel">
             <table>
               <thead>
@@ -200,132 +207,137 @@ export function Datacenter() {
       )}
       {tab === "vlans" && (
         <>
-          <Form title="Créer un VLAN sur un réseau enregistré" submit={vlan}>
-            <div className="dcForm">
-              <label>
-                ID VLAN
-                <input
-                  name="vlan_id"
-                  type="number"
-                  min="1"
-                  max="4094"
-                  required
-                />
-              </label>
-              <label>
-                Nom
-                <input name="name" required />
-              </label>
-              <label>
-                Site
-                <select name="site_id" required>
-                  <option value="">Choisir…</option>
-                  {sites.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Réseau IPAM
-                <select name="prefix_id" required>
-                  <option value="">Choisir…</option>
-                  {prefixes
-                    .filter((p) => !p.vlan_id)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.prefix} — {p.name}
+          {editable && (
+            <Form title="Créer un VLAN sur un réseau enregistré" submit={vlan}>
+              <div className="dcForm">
+                <label>
+                  ID VLAN
+                  <input
+                    name="vlan_id"
+                    type="number"
+                    min="1"
+                    max="4094"
+                    required
+                  />
+                </label>
+                <label>
+                  Nom
+                  <input name="name" required />
+                </label>
+                <label>
+                  Site
+                  <select name="site_id" required>
+                    <option value="">Choisir…</option>
+                    {sites.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
                       </option>
                     ))}
-                </select>
-              </label>
-            </div>
-          </Form>
+                  </select>
+                </label>
+                <label>
+                  Réseau IPAM
+                  <select name="prefix_id" required>
+                    <option value="">Choisir…</option>
+                    {prefixes
+                      .filter((p) => !p.vlan_id)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.prefix} — {p.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+            </Form>
+          )}
           <VlanTable
             vlans={vlans}
             prefixByVlan={prefixByVlan}
             remove={removeVlan}
+            canDelete={administrative}
           />
         </>
       )}
       {tab === "equipment" && (
         <>
-          <Form title="Ajouter un équipement" submit={equipment}>
-            <div className="dcForm">
-              <label>
-                Nom
-                <input name="hostname" required />
-              </label>
-              <label>
-                Site
-                <select name="site_id" required>
-                  <option value="">Choisir…</option>
-                  {sites.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                VLAN
-                <select name="vlan_id" required>
-                  <option value="">Choisir…</option>
-                  {vlans
-                    .filter((v) => prefixByVlan(v.id))
-                    .map((v) => (
-                      <option key={v.id} value={v.id}>
-                        VLAN {v.vlan_id} — {v.name} (
-                        {prefixByVlan(v.id)?.prefix})
+          {editable && (
+            <Form title="Ajouter un équipement" submit={equipment}>
+              <div className="dcForm">
+                <label>
+                  Nom
+                  <input name="hostname" required />
+                </label>
+                <label>
+                  Site
+                  <select name="site_id" required>
+                    <option value="">Choisir…</option>
+                    {sites.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
                       </option>
                     ))}
-                </select>
-              </label>
-              <label>
-                Adresse IP
-                <input
-                  name="ip_address"
-                  required
-                  placeholder="IP appartenant au VLAN"
-                />
-              </label>
-              <label>
-                Type
-                <select name="device_type">
-                  <option>server</option>
-                  <option>switch</option>
-                  <option>router</option>
-                  <option>firewall</option>
-                  <option>storage</option>
-                  <option>virtual machine</option>
-                </select>
-              </label>
-              <label>
-                Constructeur
-                <input name="manufacturer" />
-              </label>
-              <label>
-                Modèle
-                <input name="model" />
-              </label>
-              <label>
-                Système
-                <input name="operating_system" />
-              </label>
-              <label>
-                Description
-                <input name="description" />
-              </label>
-              <label>
-                Services
-                <input
-                  name="services"
-                  placeholder="tcp/443=https, tcp/22=ssh"
-                />
-              </label>
-            </div>
-          </Form>
+                  </select>
+                </label>
+                <label>
+                  VLAN
+                  <select name="vlan_id" required>
+                    <option value="">Choisir…</option>
+                    {vlans
+                      .filter((v) => prefixByVlan(v.id))
+                      .map((v) => (
+                        <option key={v.id} value={v.id}>
+                          VLAN {v.vlan_id} — {v.name} (
+                          {prefixByVlan(v.id)?.prefix})
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  Adresse IP
+                  <input
+                    name="ip_address"
+                    required
+                    placeholder="IP appartenant au VLAN"
+                  />
+                </label>
+                <label>
+                  Type
+                  <select name="device_type">
+                    <option>server</option>
+                    <option>switch</option>
+                    <option>router</option>
+                    <option>firewall</option>
+                    <option>storage</option>
+                    <option>virtual machine</option>
+                  </select>
+                </label>
+                <label>
+                  Constructeur
+                  <input name="manufacturer" />
+                </label>
+                <label>
+                  Modèle
+                  <input name="model" />
+                </label>
+                <label>
+                  Système
+                  <input name="operating_system" />
+                </label>
+                <label>
+                  Description
+                  <input name="description" />
+                </label>
+                <label>
+                  Services
+                  <input
+                    name="services"
+                    placeholder="tcp/443=https, tcp/22=ssh"
+                  />
+                </label>
+              </div>
+            </Form>
+          )}
           <article className="panel tablePanel dcTable">
             <table>
               <thead>
@@ -407,10 +419,12 @@ function VlanTable({
   vlans,
   prefixByVlan,
   remove,
+  canDelete,
 }: {
   vlans: any[];
   prefixByVlan: any;
   remove: any;
+  canDelete: boolean;
 }) {
   return (
     <article className="panel tablePanel dcTable">
@@ -423,7 +437,7 @@ function VlanTable({
             <th>IP prises</th>
             <th>IP disponibles</th>
             <th>Occupation</th>
-            <th></th>
+            {canDelete && <th>Actions</th>}
           </tr>
         </thead>
         <tbody>
@@ -439,11 +453,13 @@ function VlanTable({
                 <td>
                   <span className="confidence">{p?.utilization || 0}%</span>
                 </td>
-                <td>
-                  <button className="icon" onClick={() => remove(v.id)}>
-                    <Trash2 />
-                  </button>
-                </td>
+                {canDelete && (
+                  <td>
+                    <button className="icon" onClick={() => remove(v.id)}>
+                      <Trash2 />
+                    </button>
+                  </td>
+                )}
               </tr>
             );
           })}

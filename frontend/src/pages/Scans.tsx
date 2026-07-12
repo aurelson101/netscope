@@ -2,7 +2,9 @@ import { FormEvent, useEffect, useState } from "react";
 import { Play, ScanSearch, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { Layout } from "../components/Layout";
+import { canOperate, useCurrentUser } from "../lib/permissions";
 export function Scans() {
+  const editable = canOperate(useCurrentUser());
   const [scans, setScans] = useState<any[]>([]),
     [profiles, setProfiles] = useState<any[]>([]),
     [credentials, setCredentials] = useState<any[]>([]),
@@ -96,14 +98,20 @@ export function Scans() {
       <div className="split">
         <article className="panel formPanel">
           <h3>Nouveau scan</h3>
-          <form onSubmit={submit}>
-            <TargetFields profiles={profiles} credentials={credentials} />
-            {error && <div className="error">{error}</div>}
-            <button className="primary">
-              <Play />
-              Lancer le scan
-            </button>
-          </form>
+          {editable ? (
+            <form onSubmit={submit}>
+              <TargetFields profiles={profiles} credentials={credentials} />
+              {error && <div className="error">{error}</div>}
+              <button className="primary">
+                <Play />
+                Lancer le scan
+              </button>
+            </form>
+          ) : (
+            <p className="readOnlyNotice">
+              Mode lecture : le lancement de scans est réservé aux opérateurs.
+            </p>
+          )}
         </article>
         <article className="panel">
           <h3>Historique</h3>
@@ -127,64 +135,76 @@ export function Scans() {
       <div className="split" style={{ marginTop: 12 }}>
         <article className="panel formPanel">
           <h3>Planifier un scan</h3>
-          <form onSubmit={schedule}>
-            <label>
-              Nom
-              <input name="name" required />
-            </label>
-            <TargetFields profiles={profiles} credentials={credentials} />
-            <label>
-              Fréquence
-              <select name="interval_minutes" defaultValue="1440">
-                <option value="60">Chaque heure</option>
-                <option value="1440">Chaque jour</option>
-                <option value="10080">Chaque semaine</option>
-              </select>
-            </label>
-            <button className="primary">Enregistrer</button>
-          </form>
+          {editable && (
+            <form onSubmit={schedule}>
+              <label>
+                Nom
+                <input name="name" required />
+              </label>
+              <TargetFields profiles={profiles} credentials={credentials} />
+              <label>
+                Fréquence
+                <select name="interval_minutes" defaultValue="1440">
+                  <option value="60">Chaque heure</option>
+                  <option value="1440">Chaque jour</option>
+                  <option value="10080">Chaque semaine</option>
+                </select>
+              </label>
+              <button className="primary">Enregistrer</button>
+            </form>
+          )}
           {schedules.map((x) => (
             <div className="rowActions" key={x.id}>
               <span>
                 <b>{x.name}</b> · {x.target} · {x.interval_minutes} min ·{" "}
                 {x.enabled ? "actif" : "suspendu"}
               </span>
-              <button onClick={() => toggle(x)}>
-                {x.enabled ? "Suspendre" : "Activer"}
-              </button>
-              <button className="danger" onClick={() => remove(x.id)}>
-                <Trash2 />
-              </button>
+              {editable && (
+                <button onClick={() => toggle(x)}>
+                  {x.enabled ? "Suspendre" : "Activer"}
+                </button>
+              )}
+              {editable && (
+                <button className="danger" onClick={() => remove(x.id)}>
+                  <Trash2 />
+                </button>
+              )}
             </div>
           ))}
         </article>
         <article className="panel formPanel">
           <h3>Diagnostic SNMP / OID</h3>
-          <form onSubmit={snmp}>
-            <label>
-              Équipement
-              <input name="target" placeholder="192.168.1.1" required />
-            </label>
-            <label>
-              Identifiant
-              <select name="credential_id">
-                <option value="">Défaut</option>
-                {credentials.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              OID séparés par des virgules
-              <input
-                name="oids"
-                defaultValue="1.3.6.1.2.1.1.1.0, 1.3.6.1.2.1.1.2.0, 1.3.6.1.2.1.1.5.0"
-              />
-            </label>
-            <button className="primary">Tester</button>
-          </form>
+          {editable ? (
+            <form onSubmit={snmp}>
+              <label>
+                Équipement
+                <input name="target" placeholder="192.168.1.1" required />
+              </label>
+              <label>
+                Identifiant
+                <select name="credential_id">
+                  <option value="">Défaut</option>
+                  {credentials.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                OID séparés par des virgules
+                <input
+                  name="oids"
+                  defaultValue="1.3.6.1.2.1.1.1.0, 1.3.6.1.2.1.1.2.0, 1.3.6.1.2.1.1.5.0"
+                />
+              </label>
+              <button className="primary">Tester</button>
+            </form>
+          ) : (
+            <p className="readOnlyNotice">
+              Le diagnostic actif SNMP nécessite le rôle opérateur.
+            </p>
+          )}
           {diagnostic && (
             <div className={diagnostic.success ? "hint" : "error"}>
               {diagnostic.success

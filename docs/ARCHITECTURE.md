@@ -197,4 +197,5 @@ Vérifiez aussi `alembic upgrade head` sur une base temporaire et ne commitez ja
 - [Développement local](../DEVELOPMENT.md)
 - [Installation et exploitation](../README.md)
 - [Reverse proxy HTTPS](REVERSE_PROXY.md)
+- [Matrice des permissions](PERMISSIONS.md)
 - [Feuille de route](ROADMAP.md)

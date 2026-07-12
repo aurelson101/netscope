@@ -9,7 +9,11 @@ import {
 } from "lucide-react";
 import { api, token } from "../lib/api";
 import { Layout } from "../components/Layout";
+import { canOperate, isAdmin, useCurrentUser } from "../lib/permissions";
 export function Settings() {
+  const user = useCurrentUser(),
+    editable = canOperate(user),
+    administrative = isAdmin(user);
   const [prefixes, setPrefixes] = useState<any[]>([]),
     [mfa, setMfa] = useState<any>({ enabled: false }),
     [setup, setSetup] = useState<any>(),
@@ -148,62 +152,66 @@ export function Settings() {
   return (
     <Layout title="Paramètres">
       <div className="settingsGrid">
-        <article className="panel formPanel">
-          <h3>
-            <ServerCog /> Résolution DNS
-          </h3>
-          <p className="hint">
-            Configurez les serveurs PTR internes puis vérifiez-les avant un
-            scan.
-          </p>
-          {prefixes.map((p) => (
-            <form key={p.id} onSubmit={(e) => saveDns(e, p.id)}>
+        {editable && (
+          <article className="panel formPanel">
+            <h3>
+              <ServerCog /> Résolution DNS
+            </h3>
+            <p className="hint">
+              Configurez les serveurs PTR internes puis vérifiez-les avant un
+              scan.
+            </p>
+            {prefixes.map((p) => (
+              <form key={p.id} onSubmit={(e) => saveDns(e, p.id)}>
+                <label>
+                  {p.prefix} — {p.name}
+                  <input
+                    name="dns"
+                    defaultValue={(p.dns_servers || []).join(", ")}
+                    placeholder="192.168.1.254, 192.168.1.1"
+                  />
+                </label>
+                <label>
+                  IP à résoudre pour le test
+                  <input name="test_ip" placeholder="192.168.1.95" />
+                </label>
+                <div className="formActions">
+                  <button type="button" className="button" onClick={testDns}>
+                    Tester le PTR
+                  </button>
+                  <button className="primary">Enregistrer</button>
+                </div>
+              </form>
+            ))}
+          </article>
+        )}
+        {administrative && (
+          <article className="panel formPanel">
+            <h3>
+              <Save />
+              Versions de configuration
+            </h3>
+            <form onSubmit={snapshot}>
               <label>
-                {p.prefix} — {p.name}
-                <input
-                  name="dns"
-                  defaultValue={(p.dns_servers || []).join(", ")}
-                  placeholder="192.168.1.254, 192.168.1.1"
-                />
+                Commentaire
+                <input name="comment" placeholder="Avant changement réseau…" />
               </label>
-              <label>
-                IP à résoudre pour le test
-                <input name="test_ip" placeholder="192.168.1.95" />
-              </label>
-              <div className="formActions">
-                <button type="button" className="button" onClick={testDns}>
-                  Tester le PTR
-                </button>
-                <button className="primary">Enregistrer</button>
-              </div>
+              <button className="primary">Créer un instantané</button>
             </form>
-          ))}
-        </article>
-        <article className="panel formPanel">
-          <h3>
-            <Save />
-            Versions de configuration
-          </h3>
-          <form onSubmit={snapshot}>
-            <label>
-              Commentaire
-              <input name="comment" placeholder="Avant changement réseau…" />
-            </label>
-            <button className="primary">Créer un instantané</button>
-          </form>
-          {versions.map((v) => (
-            <div className="rowActions" key={v.id}>
-              <span>
-                <b>v{v.version}</b> ·{" "}
-                {v.comment || new Date(v.created_at).toLocaleString("fr")}
-              </span>
-              <button onClick={() => backup(v.id, v.version)}>
-                <Download />
-                Sauvegarder
-              </button>
-            </div>
-          ))}
-        </article>
+            {versions.map((v) => (
+              <div className="rowActions" key={v.id}>
+                <span>
+                  <b>v{v.version}</b> ·{" "}
+                  {v.comment || new Date(v.created_at).toLocaleString("fr")}
+                </span>
+                <button onClick={() => backup(v.id, v.version)}>
+                  <Download />
+                  Sauvegarder
+                </button>
+              </div>
+            ))}
+          </article>
+        )}
         <article className="panel formPanel">
           <h3>
             <ShieldCheck /> Authentification multifacteur

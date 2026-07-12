@@ -2,7 +2,11 @@ import { FormEvent, useEffect, useState } from "react";
 import { Download, FileText, Mail, Send, Trash2 } from "lucide-react";
 import { api, token } from "../lib/api";
 import { Layout } from "../components/Layout";
+import { canOperate, isAdmin, useCurrentUser } from "../lib/permissions";
 export function Reports() {
+  const user = useCurrentUser(),
+    editable = canOperate(user),
+    administrative = isAdmin(user);
   const [options, setOptions] = useState<any[]>([]),
     [smtp, setSmtp] = useState<any>({ configured: false, senders: [] }),
     [schedules, setSchedules] = useState<any[]>([]),
@@ -123,7 +127,13 @@ export function Reports() {
           <h3>
             <Send /> Envoyer maintenant
           </h3>
-          <ReportForm options={options} smtp={smtp} action={send} />
+          {editable ? (
+            <ReportForm options={options} smtp={smtp} action={send} />
+          ) : (
+            <p className="readOnlyNotice">
+              L’envoi SMTP est réservé aux opérateurs.
+            </p>
+          )}
           {message && <div className="hint">{message}</div>}
         </article>
         <article className="panel">
@@ -143,46 +153,48 @@ export function Reports() {
           ))}
         </article>
       </div>
-      <div className="split" style={{ marginTop: 12 }}>
-        <article className="panel formPanel">
-          <h3>Planifier un envoi</h3>
-          <form onSubmit={schedule}>
-            <label>
-              Nom
-              <input name="name" required />
-            </label>
-            <ReportFields options={options} smtp={smtp} />
-            <label>
-              Fréquence
-              <select name="interval_minutes" defaultValue="10080">
-                <option value="1440">Chaque jour</option>
-                <option value="10080">Chaque semaine</option>
-                <option value="43200">Chaque mois (30 jours)</option>
-              </select>
-            </label>
-            <button className="primary" disabled={!smtp.configured}>
-              Planifier
-            </button>
-          </form>
-        </article>
-        <article className="panel">
-          <h3>Envois planifiés</h3>
-          {schedules.map((x) => (
-            <div className="rowActions" key={x.id}>
-              <span>
-                <b>{x.name}</b> · {x.report_type} · {x.interval_minutes} min ·{" "}
-                {x.enabled ? "actif" : "suspendu"}
-              </span>
-              <button onClick={() => toggle(x)}>
-                {x.enabled ? "Suspendre" : "Activer"}
+      {administrative && (
+        <div className="split" style={{ marginTop: 12 }}>
+          <article className="panel formPanel">
+            <h3>Planifier un envoi</h3>
+            <form onSubmit={schedule}>
+              <label>
+                Nom
+                <input name="name" required />
+              </label>
+              <ReportFields options={options} smtp={smtp} />
+              <label>
+                Fréquence
+                <select name="interval_minutes" defaultValue="10080">
+                  <option value="1440">Chaque jour</option>
+                  <option value="10080">Chaque semaine</option>
+                  <option value="43200">Chaque mois (30 jours)</option>
+                </select>
+              </label>
+              <button className="primary" disabled={!smtp.configured}>
+                Planifier
               </button>
-              <button className="danger" onClick={() => remove(x.id)}>
-                <Trash2 />
-              </button>
-            </div>
-          ))}
-        </article>
-      </div>
+            </form>
+          </article>
+          <article className="panel">
+            <h3>Envois planifiés</h3>
+            {schedules.map((x) => (
+              <div className="rowActions" key={x.id}>
+                <span>
+                  <b>{x.name}</b> · {x.report_type} · {x.interval_minutes} min ·{" "}
+                  {x.enabled ? "actif" : "suspendu"}
+                </span>
+                <button onClick={() => toggle(x)}>
+                  {x.enabled ? "Suspendre" : "Activer"}
+                </button>
+                <button className="danger" onClick={() => remove(x.id)}>
+                  <Trash2 />
+                </button>
+              </div>
+            ))}
+          </article>
+        </div>
+      )}
     </Layout>
   );
 }

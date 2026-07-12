@@ -1,6 +1,231 @@
-.rowActions{display:flex;gap:5px}.rowActions button{border:1px solid #31506a;background:#173149;color:#91b7d5;border-radius:4px;padding:5px;cursor:pointer}.rowActions button:hover{background:#244b69}.rowActions button.danger{color:#ff887e}.rowActions svg{width:14px;height:14px}.assetEditor{margin-bottom:12px}.editorHead{display:flex;justify-content:space-between;align-items:center}.assetEditor form{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.assetEditor label{display:grid;gap:6px;color:#8ea2b4}.assetEditor input,.assetEditor select{background:#091a28;border:1px solid #29455b;border-radius:5px;color:#e0eaf3;padding:10px}.assetEditor .wide{grid-column:span 2}@media(max-width:900px){.assetEditor form{grid-template-columns:1fr 1fr}}@media(max-width:650px){.assetEditor form{grid-template-columns:1fr}.assetEditor .wide{grid-column:auto}}
-.pageTools{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.pageTools .primary{display:flex;gap:7px;align-items:center}.pageTools svg{width:17px}.labIntro{padding:10px 2px 18px}.labIntro h1{margin:0 0 5px;font-size:25px}.labIntro p{margin:0;color:#8ea2b4}.labGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px}.labCard{display:flex;gap:15px;padding:18px;text-decoration:none;color:#dce9f5;transition:.15s}.labCard:hover{transform:translateY(-2px);border-color:#3c78a4}.labCard>svg{width:29px;height:29px;color:#50a8f8}.labCard strong{font-size:25px}.labCard h3{margin:2px 0 5px}.labCard p{color:#8ea2b4;margin:0;font-size:12px;line-height:1.4}.tablePanel tbody tr{cursor:pointer}@media(max-width:1100px){.labGrid{grid-template-columns:1fr 1fr}}@media(max-width:650px){.labGrid{grid-template-columns:1fr}.pageTools{align-items:flex-start;gap:10px;flex-direction:column}}
-.dcForm{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.dcTable{margin-top:12px}@media(max-width:900px){.dcForm{grid-template-columns:1fr 1fr}}@media(max-width:650px){.dcForm{grid-template-columns:1fr}}
-.settingsGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.settingsGrid .formActions{display:flex;gap:8px}@media(max-width:1100px){.settingsGrid{grid-template-columns:1fr}}
-.relationActions{display:flex!important;flex-direction:row!important;gap:5px;margin-left:auto}.relationActions button{border:1px solid #31506a;background:#173149;color:#91b7d5;border-radius:4px;padding:5px;cursor:pointer}.relationActions button.danger{color:#ff887e}.relationActions svg{width:14px;height:14px}
-.vendorCategories{display:flex;gap:7px;overflow:auto;padding-bottom:12px}.vendorCategories button{min-width:max-content;display:flex;align-items:center;gap:7px;background:#102536;border:1px solid #29455b;color:#9eb4c7;border-radius:6px;padding:9px 11px;cursor:pointer}.vendorCategories button.active,.vendorCategories button:hover{background:#244766;color:#fff;border-color:#4381b2}.vendorCategories svg{width:16px}.vendorCategories b{background:#0a1925;border-radius:10px;padding:2px 7px}.vendorTag{display:inline-block;margin:2px}
+.rowActions {
+  display: flex;
+  gap: 5px;
+}
+.rowActions button {
+  border: 1px solid #31506a;
+  background: #173149;
+  color: #91b7d5;
+  border-radius: 4px;
+  padding: 5px;
+  cursor: pointer;
+}
+.rowActions button:hover {
+  background: #244b69;
+}
+.rowActions button.danger {
+  color: #ff887e;
+}
+.rowActions svg {
+  width: 14px;
+  height: 14px;
+}
+.assetEditor {
+  margin-bottom: 12px;
+}
+.editorHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.assetEditor form {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.assetEditor label {
+  display: grid;
+  gap: 6px;
+  color: #8ea2b4;
+}
+.assetEditor input,
+.assetEditor select {
+  background: #091a28;
+  border: 1px solid #29455b;
+  border-radius: 5px;
+  color: #e0eaf3;
+  padding: 10px;
+}
+.assetEditor .wide {
+  grid-column: span 2;
+}
+@media (max-width: 900px) {
+  .assetEditor form {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 650px) {
+  .assetEditor form {
+    grid-template-columns: 1fr;
+  }
+  .assetEditor .wide {
+    grid-column: auto;
+  }
+}
+.pageTools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.pageTools .primary {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+.pageTools svg {
+  width: 17px;
+}
+.labIntro {
+  padding: 10px 2px 18px;
+}
+.labIntro h1 {
+  margin: 0 0 5px;
+  font-size: 25px;
+}
+.labIntro p {
+  margin: 0;
+  color: #8ea2b4;
+}
+.labGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.labCard {
+  display: flex;
+  gap: 15px;
+  padding: 18px;
+  text-decoration: none;
+  color: #dce9f5;
+  transition: 0.15s;
+}
+.labCard:hover {
+  transform: translateY(-2px);
+  border-color: #3c78a4;
+}
+.labCard > svg {
+  width: 29px;
+  height: 29px;
+  color: #50a8f8;
+}
+.labCard strong {
+  font-size: 25px;
+}
+.labCard h3 {
+  margin: 2px 0 5px;
+}
+.labCard p {
+  color: #8ea2b4;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.tablePanel tbody tr {
+  cursor: pointer;
+}
+@media (max-width: 1100px) {
+  .labGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 650px) {
+  .labGrid {
+    grid-template-columns: 1fr;
+  }
+  .pageTools {
+    align-items: flex-start;
+    gap: 10px;
+    flex-direction: column;
+  }
+}
+.dcForm {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.dcTable {
+  margin-top: 12px;
+}
+@media (max-width: 900px) {
+  .dcForm {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 650px) {
+  .dcForm {
+    grid-template-columns: 1fr;
+  }
+}
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.settingsGrid .formActions {
+  display: flex;
+  gap: 8px;
+}
+@media (max-width: 1100px) {
+  .settingsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+.relationActions {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 5px;
+  margin-left: auto;
+}
+.relationActions button {
+  border: 1px solid #31506a;
+  background: #173149;
+  color: #91b7d5;
+  border-radius: 4px;
+  padding: 5px;
+  cursor: pointer;
+}
+.relationActions button.danger {
+  color: #ff887e;
+}
+.relationActions svg {
+  width: 14px;
+  height: 14px;
+}
+.vendorCategories {
+  display: flex;
+  gap: 7px;
+  overflow: auto;
+  padding-bottom: 12px;
+}
+.vendorCategories button {
+  min-width: max-content;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: #102536;
+  border: 1px solid #29455b;
+  color: #9eb4c7;
+  border-radius: 6px;
+  padding: 9px 11px;
+  cursor: pointer;
+}
+.vendorCategories button.active,
+.vendorCategories button:hover {
+  background: #244766;
+  color: #fff;
+  border-color: #4381b2;
+}
+.vendorCategories svg {
+  width: 16px;
+}
+.vendorCategories b {
+  background: #0a1925;
+  border-radius: 10px;
+  padding: 2px 7px;
+}
+.vendorTag {
+  display: inline-block;
+  margin: 2px;
+}

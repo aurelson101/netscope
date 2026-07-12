@@ -17,7 +17,8 @@ import {
   Users,
 } from "lucide-react";
 import { api } from "../lib/api";
-import { ReactNode, useEffect, useState } from "react";
+import { isAdmin, useCurrentUser } from "../lib/permissions";
+import { ReactNode, useState } from "react";
 const nav = [
   ["Tableau de bord", ChartNoAxesCombined, "#/"],
   ["Scans", ScanSearch, "#/scans"],
@@ -30,18 +31,13 @@ export function Layout({
   title: string;
 }) {
   const [open, setOpen] = useState(true),
-    [user, setUser] = useState(() =>
-      JSON.parse(localStorage.getItem("user") || "{}"),
-    ),
+    user = useCurrentUser(),
+    roleLabel = {
+      admin: "Administrateur",
+      operator: "Opérateur",
+      viewer: "Lecteur",
+    }[user.role || "admin"],
     current = "#" + (location.hash.slice(1).split("?")[0] || "/");
-  useEffect(() => {
-    api<any>("/auth/me")
-      .then((fresh) => {
-        setUser(fresh);
-        localStorage.setItem("user", JSON.stringify(fresh));
-      })
-      .catch(() => undefined);
-  }, []);
   const Link = ({
     href,
     icon: Icon,
@@ -92,7 +88,7 @@ export function Layout({
           <Link href="#/reports" icon={FileText} label="Rapports" />
           <Link href="#/archives" icon={Archive} label="Archives" />
           <Link href="#/settings" icon={Settings} label="Paramètres" />
-          {user.role === "admin" && (
+          {isAdmin(user) && (
             <Link href="#/users" icon={Users} label="Utilisateurs" />
           )}
         </nav>
@@ -109,7 +105,7 @@ export function Layout({
             </div>
             <span>
               <b>{user.username || "admin"}</b>
-              <small>{user.role || "administrateur"}</small>
+              <small>{roleLabel}</small>
             </span>
             <button
               className="icon"

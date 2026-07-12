@@ -2,7 +2,11 @@ import { FormEvent, useEffect, useState } from "react";
 import { Network, Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { Layout } from "../components/Layout";
+import { canOperate, isAdmin, useCurrentUser } from "../lib/permissions";
 export function Ipam() {
+  const user = useCurrentUser(),
+    editable = canOperate(user),
+    administrative = isAdmin(user);
   const [prefixes, setPrefixes] = useState<any[]>([]),
     [addresses, setAddresses] = useState<any[]>([]),
     [error, setError] = useState("");
@@ -88,30 +92,32 @@ export function Ipam() {
         </article>
       </div>
       <div className="split">
-        <article className="panel formPanel">
-          <h3>
-            <Plus /> Ajouter un préfixe
-          </h3>
-          <form onSubmit={addPrefix}>
-            <label>
-              Préfixe
-              <input name="prefix" placeholder="192.168.10.0/24" required />
-            </label>
-            <label>
-              Nom
-              <input name="name" placeholder="Utilisateurs Paris" required />
-            </label>
-            <label>
-              Rôle
-              <input
-                name="role"
-                placeholder="Utilisateurs, serveurs, management…"
-              />
-            </label>
-            {error && <div className="error">{error}</div>}
-            <button className="primary">Enregistrer</button>
-          </form>
-        </article>
+        {editable && (
+          <article className="panel formPanel">
+            <h3>
+              <Plus /> Ajouter un préfixe
+            </h3>
+            <form onSubmit={addPrefix}>
+              <label>
+                Préfixe
+                <input name="prefix" placeholder="192.168.10.0/24" required />
+              </label>
+              <label>
+                Nom
+                <input name="name" placeholder="Utilisateurs Paris" required />
+              </label>
+              <label>
+                Rôle
+                <input
+                  name="role"
+                  placeholder="Utilisateurs, serveurs, management…"
+                />
+              </label>
+              {error && <div className="error">{error}</div>}
+              <button className="primary">Enregistrer</button>
+            </form>
+          </article>
+        )}
         <article className="panel tablePanel">
           <table>
             <thead>
@@ -121,7 +127,7 @@ export function Ipam() {
                 <th>Rôle</th>
                 <th>Utilisation</th>
                 <th>Statut</th>
-                <th>Actions</th>
+                {administrative && <th>Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -135,9 +141,11 @@ export function Ipam() {
                       {p.used} / {p.used + p.available} · {p.utilization}%
                     </span>
                   </td>
-                  <td>
-                    <span className={"badge " + p.status}>{p.status}</span>
-                  </td>
+                  {administrative && (
+                    <td>
+                      <span className={"badge " + p.status}>{p.status}</span>
+                    </td>
+                  )}
                   <td>
                     <div className="rowActions">
                       <button
@@ -166,7 +174,7 @@ export function Ipam() {
               <th>Source</th>
               <th>Statut</th>
               <th>Dernière observation</th>
-              <th>Actions</th>
+              {editable && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -183,10 +191,12 @@ export function Ipam() {
                 <td>
                   <span className="tag">{a.source}</span>
                 </td>
-                <td>
-                  <span className={"dot " + a.status}></span>
-                  {a.status}
-                </td>
+                {editable && (
+                  <td>
+                    <span className={"dot " + a.status}></span>
+                    {a.status}
+                  </td>
+                )}
                 <td>
                   {a.last_seen
                     ? new Date(a.last_seen).toLocaleString("fr")

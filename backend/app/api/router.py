@@ -521,7 +521,7 @@ async def create_snmpv2_credential(data:SnmpV2CredentialCreate,db:AsyncSession=D
 
 
 @router.get("/credentials")
-async def credentials(db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin))):
+async def credentials(db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin,Role.operator))):
     rows=(await db.execute(select(Credential).order_by(Credential.name))).scalars().all()
     return [{"id":x.id,"name":x.name,"kind":x.kind,"site_id":x.site_id,"created_at":x.created_at} for x in rows]
 
@@ -720,7 +720,7 @@ async def backup_configuration(version_id:str,db:AsyncSession=Depends(get_db),_=
 REPORT_LABELS={"inventory":"Inventaire des équipements","ipam":"État IPAM et utilisation","scans":"Historique des scans","vendors":"Constructeurs et catégories","security":"Journal de sécurité"}
 
 @router.get("/smtp/status")
-async def smtp_status(_=Depends(require(Role.admin))):
+async def smtp_status(_=Depends(require(Role.admin,Role.operator))):
     return {"configured":bool(settings.smtp_host and settings.smtp_sender_list),"host":settings.smtp_host or None,"port":settings.smtp_port,"tls":settings.smtp_use_tls,"ssl":settings.smtp_use_ssl,"senders":settings.smtp_sender_list}
 
 @router.get("/reports/options")

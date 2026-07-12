@@ -84,35 +84,52 @@ export function Dashboard() {
       </div>
       <div className="charts">
         <Panel title="Actifs par type d’équipement" className="donutPanel">
-          {d.by_type.length ? <div className="chartFrame donutFrame"><ResponsiveContainer width="100%" height={280}>
-            <PieChart>
-              <Pie
-                className="chartClick"
-                data={d.by_type}
-                dataKey="value"
-                nameKey="label"
-                cx="50%"
-                cy="43%"
-                innerRadius={58}
-                outerRadius={88}
-                paddingAngle={2}
-                stroke="transparent"
-                onClick={(x: any) => go({ device_type: x.label })}
-              >
-                {d.by_type.map((_: any, i: number) => (
-                  <Cell key={i} fill={colors[i % colors.length]} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={{background:"#0b1d2b",border:"1px solid #31516a",borderRadius:8}} itemStyle={{color:"#e8f2fb"}} />
-              <Legend
-                onClick={(x: any) => go({ device_type: x.value })}
-                layout="horizontal"
-                verticalAlign="bottom"
-                align="center"
-                iconType="circle"
-              />
-            </PieChart>
-          </ResponsiveContainer><div className="donutTotal"><strong>{d.total.toLocaleString("fr-FR")}</strong><span>actifs</span></div></div>:<Empty text="Aucune donnée de type" />}
+          {d.by_type.length ? (
+            <div className="chartFrame donutFrame">
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie
+                    className="chartClick"
+                    data={d.by_type}
+                    dataKey="value"
+                    nameKey="label"
+                    cx="50%"
+                    cy="43%"
+                    innerRadius={58}
+                    outerRadius={88}
+                    paddingAngle={2}
+                    stroke="transparent"
+                    onClick={(x: any) => go({ device_type: x.label })}
+                  >
+                    {d.by_type.map((_: any, i: number) => (
+                      <Cell key={i} fill={colors[i % colors.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      background: "#0b1d2b",
+                      border: "1px solid #31516a",
+                      borderRadius: 8,
+                    }}
+                    itemStyle={{ color: "#e8f2fb" }}
+                  />
+                  <Legend
+                    onClick={(x: any) => go({ device_type: x.value })}
+                    layout="horizontal"
+                    verticalAlign="bottom"
+                    align="center"
+                    iconType="circle"
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="donutTotal">
+                <strong>{d.total.toLocaleString("fr-FR")}</strong>
+                <span>actifs</span>
+              </div>
+            </div>
+          ) : (
+            <Empty text="Aucune donnée de type" />
+          )}
         </Panel>
         <Panel title="Actifs par constructeur">
           <ResponsiveContainer width="100%" height={250}>
@@ -189,7 +206,15 @@ export function Dashboard() {
     </Layout>
   );
 }
-function Panel({ title, children, className = "" }: { title: string; children: any; className?: string }) {
+function Panel({
+  title,
+  children,
+  className = "",
+}: {
+  title: string;
+  children: any;
+  className?: string;
+}) {
   return (
     <article className={`panel ${className}`}>
       <h3>{title}</h3>
