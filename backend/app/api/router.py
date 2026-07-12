@@ -22,7 +22,7 @@ from app.core.security import create_token, current_user, decode_token, hash_pas
 from app.core.config import settings
 from app.db.session import get_db
 from app.models import Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, IpRange, IpamAddress, IpamPrefix, NetworkDevice, PortMacEntry, RawObservation, ReportSchedule, Role, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf
-from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PasswordChange, PrefixCreate, PrefixUpdate, ReportEmail, ReportScheduleCreate, ScanCreate, ScanOut, ScanScheduleCreate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate
+from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PasswordChange, PrefixCreate, PrefixUpdate, ReportEmail, ReportScheduleCreate, ReportScheduleUpdate, ScanCreate, ScanOut, ScanScheduleCreate, ScanScheduleUpdate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate
 from app.services.topology import ensure_asset_node, rebuild_inferred_topology
 from app.core.secrets import decrypt_secret, encrypt_secret
 from app.services.safety import validate_target
@@ -373,12 +373,16 @@ async def create_scan_schedule(data:ScanScheduleCreate,db:AsyncSession=Depends(g
     row=ScanSchedule(**data.model_dump(exclude={"target"}),target=target,created_by=user.id,next_run_at=datetime.now(timezone.utc)+timedelta(minutes=data.interval_minutes));db.add(row);db.add(AuditLog(user_id=user.id,action="scan_schedule_created",details={"name":row.name}));await db.commit();await db.refresh(row);return row
 
 @router.patch("/scan-schedules/{schedule_id}")
-async def update_scan_schedule(schedule_id:str,data:ScanScheduleCreate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
+async def update_scan_schedule(schedule_id:str,data:ScanScheduleUpdate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
     row=await db.get(ScanSchedule,schedule_id)
     if not row:raise HTTPException(404,"Planification introuvable")
-    values=data.model_dump();values["target"]=validate_target(values["target"],confirm_large=True,confirm_public=False)
+    values=data.model_dump(exclude_unset=True)
+    if "target" in values:values["target"]=validate_target(values["target"],confirm_large=True,confirm_public=False)
+    if values.get("profile_id") and not await db.get(ScanProfile,values["profile_id"]):raise HTTPException(404,"Profil introuvable")
+    if values.get("credential_id") and not await db.get(Credential,values["credential_id"]):raise HTTPException(404,"Identifiant SNMP introuvable")
     for field,value in values.items():setattr(row,field,value)
-    row.next_run_at=datetime.now(timezone.utc)+timedelta(minutes=row.interval_minutes);db.add(AuditLog(user_id=user.id,action="scan_schedule_updated",details={"id":row.id}));await db.commit();return row
+    if "interval_minutes" in values or values.get("enabled") is True:row.next_run_at=datetime.now(timezone.utc)+timedelta(minutes=row.interval_minutes)
+    db.add(AuditLog(user_id=user.id,action="scan_schedule_updated",details={"id":row.id,"fields":list(values)}));await db.commit();return row
 
 @router.delete("/scan-schedules/{schedule_id}")
 async def delete_scan_schedule(schedule_id:str,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
@@ -783,7 +787,21 @@ async def report_schedules(db:AsyncSession=Depends(get_db),_=Depends(require(Rol
 @router.post("/report-schedules")
 async def create_report_schedule(data:ReportScheduleCreate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
     if data.sender not in settings.smtp_sender_list:raise HTTPException(422,"Expéditeur non autorisé")
+    email_pattern=re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    if any(not email_pattern.match(x) for x in data.recipients):raise HTTPException(422,"Adresse e-mail invalide")
     row=ReportSchedule(**data.model_dump(),next_run_at=datetime.now(timezone.utc)+timedelta(minutes=data.interval_minutes));db.add(row);db.add(AuditLog(user_id=user.id,action="report_schedule_created",details={"name":row.name}));await db.commit();await db.refresh(row);return row
+
+@router.patch("/report-schedules/{schedule_id}")
+async def update_report_schedule(schedule_id:str,data:ReportScheduleUpdate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    row=await db.get(ReportSchedule,schedule_id)
+    if not row:raise HTTPException(404,"Planification introuvable")
+    values=data.model_dump(exclude_unset=True)
+    if values.get("sender") and values["sender"] not in settings.smtp_sender_list:raise HTTPException(422,"Expéditeur non autorisé")
+    email_pattern=re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    if values.get("recipients") and any(not email_pattern.match(x) for x in values["recipients"]):raise HTTPException(422,"Adresse e-mail invalide")
+    for field,value in values.items():setattr(row,field,value)
+    if "interval_minutes" in values or values.get("enabled") is True:row.next_run_at=datetime.now(timezone.utc)+timedelta(minutes=row.interval_minutes)
+    db.add(AuditLog(user_id=user.id,action="report_schedule_updated",details={"id":row.id,"fields":list(values)}));await db.commit();return row
 
 @router.delete("/report-schedules/{schedule_id}")
 async def delete_report_schedule(schedule_id:str,db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin))):

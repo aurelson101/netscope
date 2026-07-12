@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./style.css";
 import "./interactions.css";
 import "./management.css";
+import "./ui.css";
 import { token } from "./lib/api";
 const Datacenter = lazy(() =>
     import("./pages/Datacenter").then((x) => ({ default: x.Datacenter })),

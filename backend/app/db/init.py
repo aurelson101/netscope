@@ -1,15 +1,18 @@
 import ipaddress
-from sqlalchemy import select, update
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import delete, select, update
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db.session import SessionLocal, engine
-from app.models import Asset, AssetAddress, Base, DeviceRole, IpamAddress, IpamPrefix, Role, ScanJob, ScanProfile, Site, Subnet, User
+from app.models import Asset, AssetAddress, Base, DeviceRole, IpamAddress, IpamPrefix, Role, ScanJob, ScanProfile, Site, Subnet, User, UserSession
 from app.services.vendors import infer_mobile_identity
 
 
 async def init_db():
     async with engine.begin() as conn: await conn.run_sync(Base.metadata.create_all)
     async with SessionLocal() as db:
+        retention=datetime.now(timezone.utc)-timedelta(days=30)
+        await db.execute(delete(UserSession).where((UserSession.expires_at<retention)|((UserSession.revoked_at.is_not(None))&(UserSession.revoked_at<retention))))
         await db.execute(update(ScanJob).where(ScanJob.status.in_(["running","queued"])).values(status="failed",error="Scan interrompu par un redémarrage ou un worker indisponible"))
         await db.execute(update(Asset).where(Asset.manufacturer.ilike("%unknown%")).values(manufacturer=None))
         await db.execute(update(Asset).where(Asset.manufacturer.ilike("%locally administered%")).values(manufacturer=None))

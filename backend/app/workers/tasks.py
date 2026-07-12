@@ -82,20 +82,38 @@ def dispatch_due_schedules():return asyncio.run(_dispatch_due())
 
 async def _dispatch_due():
     now=datetime.now(timezone.utc)
+    queued_scans:list[tuple[str,str]]=[];queued_reports:list[tuple[str,str]]=[]
     async with SessionLocal() as db:
         scans=(await db.execute(select(ScanSchedule).where(ScanSchedule.enabled.is_(True),ScanSchedule.next_run_at<=now))).scalars().all()
         for schedule in scans:
             active=await db.scalar(select(ScanJob.id).where(ScanJob.target==schedule.target,ScanJob.status.in_(["queued","running"])).limit(1))
             if not active:
-                job=ScanJob(target=schedule.target,profile_id=schedule.profile_id,credential_id=schedule.credential_id,created_by=schedule.created_by);db.add(job);await db.flush();execute_scan.apply_async(args=[job.id],queue="scanner")
+                job=ScanJob(target=schedule.target,profile_id=schedule.profile_id,credential_id=schedule.credential_id,created_by=schedule.created_by);db.add(job);await db.flush();queued_scans.append((schedule.id,job.id))
             schedule.last_run_at=now;schedule.next_run_at=now+timedelta(minutes=schedule.interval_minutes)
         reports=(await db.execute(select(ReportSchedule).where(ReportSchedule.enabled.is_(True),ReportSchedule.next_run_at<=now))).scalars().all()
         for schedule in reports:
-            send_scheduled_report.delay(schedule.id);schedule.last_run_at=now;schedule.next_run_at=now+timedelta(minutes=schedule.interval_minutes)
+            queued_reports.append((schedule.id,schedule.id));schedule.last_run_at=now;schedule.next_run_at=now+timedelta(minutes=schedule.interval_minutes)
         await db.commit()
-    return {"scans":len(scans),"reports":len(reports)}
+    failures=[]
+    for schedule_id,job_id in queued_scans:
+        try:execute_scan.apply_async(args=[job_id],queue="scanner",retry=False)
+        except Exception as exc:failures.append(("scan",schedule_id,job_id,str(exc)));logger.exception("scheduled_scan_enqueue_failed",extra={"schedule_id":schedule_id,"job_id":job_id})
+    for schedule_id,_ in queued_reports:
+        try:send_scheduled_report.apply_async(args=[schedule_id],retry=False)
+        except Exception as exc:failures.append(("report",schedule_id,None,str(exc)));logger.exception("scheduled_report_enqueue_failed",extra={"schedule_id":schedule_id})
+    if failures:
+        retry_at=now+timedelta(minutes=5)
+        async with SessionLocal() as db:
+            for kind,schedule_id,job_id,error in failures:
+                schedule=await db.get(ScanSchedule if kind=="scan" else ReportSchedule,schedule_id)
+                if schedule:schedule.next_run_at=retry_at
+                if job_id:
+                    job=await db.get(ScanJob,job_id)
+                    if job:job.status="failed";job.error=f"Mise en file impossible: {error}"[:2000];job.finished_at=datetime.now(timezone.utc)
+            await db.commit()
+    return {"scans":len(queued_scans),"reports":len(queued_reports),"failures":len(failures)}
 
-@celery.task(name="send_scheduled_report")
+@celery.task(name="send_scheduled_report",autoretry_for=(Exception,),retry_backoff=True,retry_jitter=True,max_retries=3)
 def send_scheduled_report(schedule_id:str):return asyncio.run(_send_scheduled_report(schedule_id))
 
 async def _send_scheduled_report(schedule_id:str):
@@ -105,6 +123,8 @@ async def _send_scheduled_report(schedule_id:str):
     async with SessionLocal() as db:
         schedule=await db.get(ReportSchedule,schedule_id)
         if not schedule or not schedule.enabled:return
+        if not settings.smtp_host:raise RuntimeError("SMTP non configuré")
+        if schedule.sender not in settings.smtp_sender_list:raise RuntimeError("Expéditeur du rapport planifié non autorisé")
         filename,content=await build_report(schedule.report_type,db);msg=EmailMessage();msg["From"]=schedule.sender;msg["To"]=", ".join(schedule.recipients);msg["Subject"]=f"NetScope — {REPORT_LABELS[schedule.report_type]}";msg.set_content("Rapport NetScope planifié en pièce jointe.")
         if schedule.format=="pdf":filename=filename.removesuffix(".csv")+".pdf";msg.add_attachment(report_pdf(schedule.report_type,content),maintype="application",subtype="pdf",filename=filename)
         else:msg.add_attachment(content.encode("utf-8-sig"),maintype="text",subtype="csv",filename=filename)

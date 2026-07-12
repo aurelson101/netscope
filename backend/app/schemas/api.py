@@ -40,6 +40,14 @@ class ScanScheduleCreate(BaseModel):
     interval_minutes: int = Field(ge=5,le=525600)
     enabled: bool = True
 
+class ScanScheduleUpdate(BaseModel):
+    name: str | None = Field(default=None,min_length=2,max_length=120)
+    target: str | None = None
+    profile_id: str | None = None
+    credential_id: str | None = None
+    interval_minutes: int | None = Field(default=None,ge=5,le=525600)
+    enabled: bool | None = None
+
 class UserCreate(BaseModel):
     username: str = Field(min_length=3,max_length=80,pattern=r"^[A-Za-z0-9_.-]+$")
     password: str = Field(min_length=12,max_length=256)
@@ -169,6 +177,15 @@ class ReportScheduleCreate(BaseModel):
     recipients: list[str] = Field(min_length=1,max_length=20)
     interval_minutes: int = Field(ge=15,le=525600)
     enabled: bool = True
+
+class ReportScheduleUpdate(BaseModel):
+    name: str | None = Field(default=None,min_length=2,max_length=120)
+    report_type: str | None = Field(default=None,pattern=r"^(inventory|ipam|scans|vendors|security)$")
+    format: str | None = Field(default=None,pattern=r"^(csv|pdf)$")
+    sender: str | None = Field(default=None,min_length=3,max_length=254)
+    recipients: list[str] | None = Field(default=None,min_length=1,max_length=20)
+    interval_minutes: int | None = Field(default=None,ge=15,le=525600)
+    enabled: bool | None = None
 
 class VrfCreate(BaseModel):
     name: str = Field(min_length=1,max_length=120)
