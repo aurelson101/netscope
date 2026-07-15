@@ -316,6 +316,8 @@ make diagnose
 
 Il contrôle la configuration Compose, les conteneurs, les healthchecks, l'accès HTTP et recherche les erreurs critiques dans les journaux des dix dernières minutes. Utilisez `LOG_SINCE=1h make diagnose` pour élargir la période.
 
+Il vérifie également l'espace disque et signale tout journal dépassant 100 Mio. Les logs internes du moteur Docker sont limités à trois fichiers de 10 Mio par conteneur. `WORKER_CONCURRENCY` et `SCANNER_CONCURRENCY` valent 2 par défaut afin d'éviter une consommation mémoire excessive ; augmentez-les progressivement sur les serveurs disposant de davantage de mémoire.
+
 ### La page ne s’ouvre pas
 
 ```bash

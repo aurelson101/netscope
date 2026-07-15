@@ -38,11 +38,28 @@ else
     echo "OK: $base_url/health"
 fi
 
+echo "== Espace disque et journaux =="
+available_percent=$(df -Pk . | awk 'NR==2 {gsub("%", "", $5); print 100-$5}')
+if [ "$available_percent" -lt 10 ]; then
+    echo "ERREUR: moins de 10 % d'espace disque disponible"
+    failed=1
+else
+    echo "OK: ${available_percent}% d'espace disque disponible"
+fi
+large_logs=$(find logs -type f -size +100M -print 2>/dev/null || true)
+if [ -n "$large_logs" ]; then
+    echo "ERREUR: journaux de plus de 100 Mio détectés"
+    echo "$large_logs"
+    failed=1
+else
+    echo "OK: aucun journal supérieur à 100 Mio"
+fi
+
 echo "== Erreurs récentes ($log_since) =="
 log_file=$(mktemp)
 trap 'rm -f "$log_file"' EXIT HUP INT TERM
 compose logs --no-color --since "$log_since" >"$log_file" 2>&1 || true
-if grep -Eai 'permission denied|traceback|fatal|panic|unhandled_request_error|connection refused|no space left' "$log_file"; then
+if grep -Eai 'permission denied|traceback|fatal|panic|unhandled_request_error|connection refused|no space left|out of memory|killed process' "$log_file"; then
     echo "ERREUR: anomalies détectées dans les journaux récents"
     failed=1
 else
