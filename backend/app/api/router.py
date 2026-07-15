@@ -13,6 +13,8 @@ import smtplib
 from email.message import EmailMessage
 import re
 import json
+import shutil
+import urllib.request
 import redis.asyncio as redis
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import exists, func, or_, select, update
@@ -29,6 +31,19 @@ from app.services.safety import validate_target
 from app.services.vendors import MOBILE_VENDORS,normalize_vendor
 
 router = APIRouter(prefix="/api/v1")
+
+
+@router.get("/system/monitoring")
+async def system_monitoring(_:User=Depends(require(Role.admin))):
+    def fetch():
+        with urllib.request.urlopen(settings.docker_monitor_url,timeout=5) as response:return json.load(response)
+    try:
+        payload=await asyncio.to_thread(fetch)
+        payload["monitor_available"]=True
+        return payload
+    except Exception as exc:
+        total,used,free=shutil.disk_usage("/logs")
+        return {"status":"critical","monitor_available":False,"error":"Service de supervision Docker indisponible","containers":[],"disk":{"total_bytes":total,"used_bytes":used,"free_bytes":free,"used_percent":round(used*100/total,1),"free_percent":round(free*100/total,1)},"checked_at":datetime.now(timezone.utc).isoformat()}
 
 def validate_password_policy(value:str)->None:
     if not (len(value)>=12 and any(c.islower() for c in value) and any(c.isupper() for c in value) and any(c.isdigit() for c in value) and any(not c.isalnum() for c in value)):

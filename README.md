@@ -318,6 +318,8 @@ Il contrôle la configuration Compose, les conteneurs, les healthchecks, l'accè
 
 Il vérifie également l'espace disque et signale tout journal dépassant 100 Mio. Les logs internes du moteur Docker sont limités à trois fichiers de 10 Mio par conteneur. `WORKER_CONCURRENCY` et `SCANNER_CONCURRENCY` valent 2 par défaut afin d'éviter une consommation mémoire excessive ; augmentez-les progressivement sur les serveurs disposant de davantage de mémoire.
 
+Les administrateurs disposent aussi d'un panneau **Paramètres → Supervision de la plateforme**. Il affiche toutes les quinze secondes l'état de chaque conteneur, son healthcheck, ses redémarrages et l'espace disque disponible. La lecture du socket Docker est isolée dans `docker-monitor` ; l'API principale n'y accède jamais directement.
+
 ### La page ne s’ouvre pas
 
 ```bash

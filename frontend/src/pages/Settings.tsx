@@ -1,8 +1,11 @@
 import { FormEvent, useEffect, useState } from "react";
 import {
   Download,
+  HardDrive,
+  HeartPulse,
   KeyRound,
   LockKeyhole,
+  RefreshCw,
   Save,
   ServerCog,
   ShieldCheck,
@@ -18,6 +21,8 @@ export function Settings() {
     [mfa, setMfa] = useState<any>({ enabled: false }),
     [setup, setSetup] = useState<any>(),
     [versions, setVersions] = useState<any[]>([]),
+    [monitoring, setMonitoring] = useState<any>(),
+    [monitoringLoading, setMonitoringLoading] = useState(false),
     [message, setMessage] = useState("");
   const load = () => {
     api<any[]>("/ipam/prefixes")
@@ -31,6 +36,27 @@ export function Settings() {
       .catch(() => setVersions([]));
   };
   useEffect(load, []);
+  async function loadMonitoring() {
+    setMonitoringLoading(true);
+    try {
+      setMonitoring(await api("/system/monitoring"));
+    } catch (x: any) {
+      setMonitoring({
+        status: "critical",
+        monitor_available: false,
+        containers: [],
+        error: x.message,
+      });
+    } finally {
+      setMonitoringLoading(false);
+    }
+  }
+  useEffect(() => {
+    if (!administrative) return;
+    loadMonitoring();
+    const timer = window.setInterval(loadMonitoring, 15000);
+    return () => window.clearInterval(timer);
+  }, [administrative]);
   async function saveDns(e: FormEvent<HTMLFormElement>, id: string) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -156,6 +182,82 @@ export function Settings() {
   return (
     <Layout title="Paramètres">
       <div className="settingsGrid">
+        {administrative && (
+          <article className="panel monitoringPanel">
+            <div className="monitoringHeader">
+              <h3>
+                <HeartPulse /> Supervision de la plateforme
+              </h3>
+              <div className="monitoringActions">
+                <span
+                  className={`monitoringState ${monitoring?.status === "healthy" ? "healthy" : "critical"}`}
+                >
+                  <i />
+                  {monitoring?.status === "healthy"
+                    ? "Tous les services sont opérationnels"
+                    : "Attention requise"}
+                </span>
+                <button
+                  className="icon"
+                  onClick={loadMonitoring}
+                  disabled={monitoringLoading}
+                  title="Actualiser"
+                >
+                  <RefreshCw className={monitoringLoading ? "spinning" : ""} />
+                </button>
+              </div>
+            </div>
+            {monitoring?.error && (
+              <p className="monitoringError">{monitoring.error}</p>
+            )}
+            <div className="monitoringSummary">
+              <div>
+                <HardDrive />
+                <span>
+                  <small>Espace disque disponible</small>
+                  <b>
+                    {monitoring?.disk
+                      ? `${formatBytes(monitoring.disk.free_bytes)} (${monitoring.disk.free_percent} %)`
+                      : "—"}
+                  </b>
+                </span>
+              </div>
+              <div className="diskBar" aria-label="Utilisation du disque">
+                <i
+                  className={monitoring?.disk?.used_percent >= 90 ? "critical" : ""}
+                  style={{ width: `${monitoring?.disk?.used_percent || 0}%` }}
+                />
+              </div>
+            </div>
+            <div className="containerGrid">
+              {(monitoring?.containers || []).map((container: any) => (
+                <div
+                  className={`containerHealth ${container.healthy ? "healthy" : "critical"}`}
+                  key={container.name}
+                >
+                  <i />
+                  <span>
+                    <b>{container.service}</b>
+                    <small>
+                      {container.state} · health {container.health}
+                      {container.restarts
+                        ? ` · ${container.restarts} redémarrage(s)`
+                        : ""}
+                    </small>
+                  </span>
+                </div>
+              ))}
+              {monitoring && !monitoring.containers?.length && (
+                <p className="hint">Aucun état de conteneur disponible.</p>
+              )}
+            </div>
+            {monitoring?.checked_at && (
+              <small className="monitoringTime">
+                Dernière vérification : {new Date(monitoring.checked_at).toLocaleString("fr")}
+              </small>
+            )}
+          </article>
+        )}
         {editable && (
           <article className="panel formPanel">
             <h3>
@@ -303,6 +405,17 @@ export function Settings() {
       )}
     </Layout>
   );
+}
+function formatBytes(value: number) {
+  if (!Number.isFinite(value)) return "—";
+  const units = ["o", "Kio", "Mio", "Gio", "Tio"];
+  let amount = value,
+    index = 0;
+  while (amount >= 1024 && index < units.length - 1) {
+    amount /= 1024;
+    index++;
+  }
+  return `${amount.toFixed(index > 2 ? 1 : 0)} ${units[index]}`;
 }
 function CodeForm({
   action,

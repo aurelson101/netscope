@@ -57,6 +57,7 @@ services:
       ACCESS_TOKEN_MINUTES: ${ACCESS_TOKEN_MINUTES:-120}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:5173}
       MAX_SCAN_HOSTS: ${MAX_SCAN_HOSTS:-4096}
+      DOCKER_MONITOR_URL: http://docker-monitor:8090/snapshot
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
@@ -79,6 +80,23 @@ services:
     security_opt: [no-new-privileges:true]
     depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_healthy}}
     healthcheck: {test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"], interval: 10s, timeout: 3s, retries: 10}
+    logging: *default-logging
+    restart: unless-stopped
+  docker-monitor:
+    image: python:3.13-alpine
+    command: python /app/docker-monitor.py
+    environment:
+      COMPOSE_PROJECT_NAME: netscope
+      DISK_PATH: /host/logs
+      EXPECTED_SERVICES: postgres,redis,backup,backend-api,docker-monitor,worker,scheduler,scanner,frontend
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./scripts/docker-monitor.py:/app/docker-monitor.py:ro
+      - ./logs:/host/logs:ro
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    healthcheck: {test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8090/health], interval: 15s, timeout: 5s, retries: 3, start_period: 5s}
     logging: *default-logging
     restart: unless-stopped
   worker:

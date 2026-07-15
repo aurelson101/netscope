@@ -488,6 +488,144 @@ tbody tr:hover {
   display: grid;
   gap: 13px;
 }
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.monitoringPanel {
+  grid-column: 1 / -1;
+}
+.monitoringHeader,
+.monitoringActions,
+.monitoringSummary > div,
+.containerHealth {
+  display: flex;
+  align-items: center;
+}
+.monitoringHeader {
+  justify-content: space-between;
+  gap: 16px;
+}
+.monitoringHeader h3,
+.monitoringSummary svg {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.monitoringHeader h3 svg,
+.monitoringSummary svg {
+  width: 18px;
+  color: #5b9ce5;
+}
+.monitoringActions {
+  gap: 8px;
+}
+.monitoringState {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.monitoringState i,
+.containerHealth > i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+.monitoringState.healthy {
+  background: #164939;
+  color: #62e0a0;
+}
+.monitoringState.healthy i,
+.containerHealth.healthy > i {
+  background: #39ce7d;
+  box-shadow: 0 0 10px #39ce7d88;
+}
+.monitoringState.critical,
+.monitoringError {
+  background: #5b2928;
+  color: #ff9188;
+}
+.monitoringState.critical i,
+.containerHealth.critical > i {
+  background: #ef6253;
+  box-shadow: 0 0 10px #ef625388;
+}
+.monitoringError {
+  padding: 10px 12px;
+  border-radius: 7px;
+}
+.monitoringSummary {
+  margin: 14px 0;
+  padding: 13px;
+  background: #0b1d2b;
+  border: 1px solid #263f53;
+  border-radius: 8px;
+}
+.monitoringSummary > div:first-child {
+  gap: 10px;
+}
+.monitoringSummary span,
+.containerHealth span {
+  display: grid;
+  gap: 3px;
+}
+.monitoringSummary small,
+.containerHealth small,
+.monitoringTime {
+  color: #8196a9;
+}
+.diskBar {
+  height: 7px;
+  margin-top: 11px;
+  overflow: hidden;
+  background: #21384a;
+  border-radius: 99px;
+}
+.diskBar i {
+  display: block;
+  height: 100%;
+  background: #39ce7d;
+}
+.diskBar i.critical {
+  background: #ef6253;
+}
+.containerGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.containerHealth {
+  gap: 10px;
+  padding: 10px;
+  background: #0c1f2e;
+  border: 1px solid #263f53;
+  border-radius: 7px;
+}
+.containerHealth.critical {
+  border-color: #713a39;
+}
+.spinning {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@media (max-width: 900px) {
+  .settingsGrid,
+  .containerGrid {
+    grid-template-columns: 1fr;
+  }
+  .monitoringHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
 .formPanel label,
 .login label {
   display: grid;

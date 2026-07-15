@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     access_token_minutes: int = 120
     cors_origins: str = "http://localhost:8080,http://localhost:5173"
     max_scan_hosts: int = 4096
+    docker_monitor_url: str = "http://docker-monitor:8090/snapshot"
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
