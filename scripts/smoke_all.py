@@ -4,7 +4,7 @@ from datetime import datetime,timezone
 from pathlib import Path
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument("--base",default="http://localhost:8080/api/v1");parser.add_argument("--username",default="admin");parser.add_argument("--password",required=True);parser.add_argument("--scan",action="store_true");args=parser.parse_args();results=[]
+    parser=argparse.ArgumentParser();parser.add_argument("--base",default="http://localhost:8080/api/v1");parser.add_argument("--username",default="admin@netscope.local");parser.add_argument("--password",required=True);parser.add_argument("--scan",action="store_true");args=parser.parse_args();results=[]
     def request(path,method="GET",body=None,auth=True):
         started=time.perf_counter();headers={"Content-Type":"application/json"}
         if auth:headers["Authorization"]="Bearer "+token

@@ -46,7 +46,7 @@ async def login(request:Request,form:OAuth2PasswordRequestForm=Depends(),x_mfa_c
     except HTTPException:raise
     except Exception:pass
     finally:await limiter.aclose()
-    user = (await db.execute(select(User).where(User.username == form.username))).scalar_one_or_none()
+    user = (await db.execute(select(User).where(func.lower(User.username) == form.username.strip().casefold()))).scalar_one_or_none()
     if not user or not user.active or not verify_password(form.password, user.password_hash):
         raise HTTPException(401, "Identifiants invalides")
     mfa=await db.get(UserMfa,user.id)

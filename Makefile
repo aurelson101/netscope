@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint migrate
+.PHONY: up down logs test lint migrate diagnose
 up:
 	docker compose up -d --build
 down:
@@ -10,6 +10,8 @@ test:
 lint:
 	cd frontend && npm run build
 smoke:
-	python3 scripts/smoke_all.py --password "$${ADMIN_PASSWORD:-NetScopeAdmin2026!}"
+	python3 scripts/smoke_all.py --username "$${ADMIN_EMAIL:-admin@netscope.local}" --password "$${ADMIN_PASSWORD:-NetScopeAdmin2026!}"
+diagnose:
+	./scripts/diagnose.sh
 migrate:
 	docker compose exec backend-api python -c "import asyncio; from app.db.init import init_db; asyncio.run(init_db())"

@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
     secret_key: str = "development-only-change-me-32-bytes-minimum"
     master_encryption_key: str = "development-master-key-change-me-32-bytes"
+    admin_email: str = "admin@netscope.local"
+    # Conservé pour migrer automatiquement les installations antérieures.
     admin_username: str = "admin"
     admin_password: str = "ChangeMeNow!"
     access_token_minutes: int = 120
@@ -34,6 +36,10 @@ class Settings(BaseSettings):
     @property
     def cors_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",")]
+
+    @property
+    def admin_identifier(self) -> str:
+        return self.admin_email.strip().casefold() or self.admin_username.strip()
 
     @property
     def smtp_sender_list(self)->list[str]:

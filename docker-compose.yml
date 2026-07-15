@@ -44,6 +44,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-NetScope-Development-Secret-Key-2026-Change-Me}
       MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:-NetScope-Development-Master-Key-2026-Change-Me}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@netscope.local}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-NetScopeAdmin2026!}
       APP_NAME: ${APP_NAME:-NetScope}

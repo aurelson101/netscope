@@ -30,12 +30,18 @@ export function Login() {
         </div>
         <p>Inventaire et découverte réseau</p>
         <label>
-          Nom d’utilisateur
-          <input name="username" defaultValue="admin" autoFocus />
+          Adresse email
+          <input
+            name="username"
+            type="email"
+            defaultValue="admin@netscope.local"
+            autoComplete="username"
+            autoFocus
+          />
         </label>
         <label>
           Mot de passe
-          <input name="password" type="password" />
+          <input name="password" type="password" autoComplete="current-password" />
         </label>
         <label>
           Code MFA (si activé)

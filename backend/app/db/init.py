@@ -9,16 +9,28 @@ from app.services.vendors import infer_mobile_identity
 
 async def recover_admin_access(db)->bool:
     if await db.scalar(select(func.count()).select_from(User).where(User.role==Role.admin,User.active.is_(True))):return False
-    recovery=(await db.execute(select(User).where(User.username==settings.admin_username))).scalar_one_or_none()
+    recovery=(await db.execute(select(User).where(func.lower(User.username)==settings.admin_identifier))).scalar_one_or_none()
     if not recovery:return False
     recovery.role=Role.admin;recovery.active=True
     db.add(AuditLog(user_id=recovery.id,action="admin_access_recovered",details={"reason":"no_active_administrator"}))
     return True
 
 
+async def migrate_admin_identifier(db)->None:
+    """Rename the legacy admin login without replacing its password or MFA."""
+    desired=settings.admin_identifier
+    if not desired or await db.scalar(select(User.id).where(func.lower(User.username)==desired)):return
+    legacy=(await db.execute(select(User).where(func.lower(User.username)==settings.admin_username.strip().casefold(),User.role==Role.admin))).scalar_one_or_none()
+    if not legacy:return
+    previous=legacy.username
+    legacy.username=desired
+    db.add(AuditLog(user_id=legacy.id,action="admin_identifier_migrated",details={"previous":previous,"current":desired}))
+
+
 async def init_db():
     async with engine.begin() as conn: await conn.run_sync(Base.metadata.create_all)
     async with SessionLocal() as db:
+        await migrate_admin_identifier(db)
         retention=datetime.now(timezone.utc)-timedelta(days=30)
         await db.execute(delete(UserSession).where((UserSession.expires_at<retention)|((UserSession.revoked_at.is_not(None))&(UserSession.revoked_at<retention))))
         await db.execute(update(ScanJob).where(ScanJob.status.in_(["running","queued"])).values(status="failed",error="Scan interrompu par un redémarrage ou un worker indisponible"))
@@ -31,7 +43,7 @@ async def init_db():
             if inferred.get("device_type") and asset.device_type=="unknown":asset.device_type=inferred["device_type"]
             if inferred:asset.confidence=max(asset.confidence,0.68)
         if not await db.scalar(select(User.id).limit(1)):
-            db.add(User(username=settings.admin_username,password_hash=hash_password(settings.admin_password),role=Role.admin))
+            db.add(User(username=settings.admin_identifier,password_hash=hash_password(settings.admin_password),role=Role.admin))
         else:await recover_admin_access(db)
         if not await db.scalar(select(Site.id).limit(1)): db.add(Site(name="Principal",description="Site principal"))
         if not await db.scalar(select(ScanProfile.id).limit(1)):

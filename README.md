@@ -48,7 +48,7 @@ Exemple de configuration :
 POSTGRES_PASSWORD=remplacez-par-un-mot-de-passe-long
 SECRET_KEY=remplacez-par-une-cle-aleatoire-de-32-caracteres-minimum
 MASTER_ENCRYPTION_KEY=remplacez-par-une-autre-cle-aleatoire-longue
-ADMIN_USERNAME=admin
+ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=remplacez-par-un-mot-de-passe-administrateur
 HTTP_PORT=8080
 ```
@@ -95,7 +95,7 @@ Ouvrez ensuite :
 
 Depuis un autre ordinateur, remplacez `localhost` par l’adresse IP du serveur, par exemple `http://192.168.1.20:8080`.
 
-Connectez-vous avec `ADMIN_USERNAME` et `ADMIN_PASSWORD` définis dans `.env`. Après la première connexion, ouvrez **Paramètres** pour activer le MFA et, si nécessaire, changer le mot de passe.
+Connectez-vous avec `ADMIN_EMAIL` et `ADMIN_PASSWORD` définis dans `.env`. Lors de la mise à jour d'une installation existante, le compte `ADMIN_USERNAME` est automatiquement renommé avec cet email sans modifier son mot de passe ni son MFA. Après la première connexion, ouvrez **Paramètres** pour activer le MFA et, si nécessaire, changer le mot de passe.
 
 ## 4. Première configuration recommandée
 
@@ -307,6 +307,14 @@ authentification ; ne remplacez pas `MONITORING_BIND=127.0.0.1` par `0.0.0.0`
 sur un serveur exposé.
 
 ## 9. Dépannage simple
+
+Lancez d'abord le diagnostic automatique :
+
+```bash
+make diagnose
+```
+
+Il contrôle la configuration Compose, les conteneurs, les healthchecks, l'accès HTTP et recherche les erreurs critiques dans les journaux des dix dernières minutes. Utilisez `LOG_SINCE=1h make diagnose` pour élargir la période.
 
 ### La page ne s’ouvre pas
 
