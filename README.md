@@ -347,6 +347,8 @@ La sonde publie un heartbeat, récupère une tâche à la fois et renvoie unique
 
 Les collectes SNMP enregistrent également les compteurs 64 bits, erreurs, vitesse et utilisation de chaque interface. Deux collectes sont nécessaires pour calculer les débits entrants/sortants ; les dernières valeurs apparaissent dans **Infrastructure Lab** et l'historique sur 90 jours est disponible par l'API `/switch-ports/{id}/metrics`. Une utilisation supérieure à 90 % sur deux collectes ouvre une alerte, résolue sous 80 %. Les voisins LLDP/CDP sont associés à leurs vrais index et noms de ports locaux/distants.
 
+La vue **Routage et Wi-Fi** rassemble les routes IPv4/IPv6 collectées par SNMP, les next-hops, protocoles et interfaces. Le voisinage moderne `ipNetToPhysical` ajoute les associations IPv6/MAC. Les observations de contrôleurs Wi-Fi enregistrent radios, bandes 2,4/5/6 GHz, canaux jusqu'à 320 MHz, BSSID, VLAN, sécurité et clients ; OPEN, WEP et WPA déclenchent une alerte critique. Une radio à au moins 80 % sur deux observations ouvre une alerte, résolue sous 60 %. Pour automatiser l'envoi, créez un connecteur de type Wi-Fi et appelez `POST /api/v1/wireless-ingest` avec son `X-Connector-Token` (120 requêtes/minute maximum).
+
 ### La page ne s’ouvre pas
 
 ```bash

@@ -84,6 +84,7 @@ export function Layout({
         <small>INTELLIGENCE</small>
         <nav>
           <Link href="#/vendors" icon={Box} label="Constructeurs" />
+          <Link href="#/network-intelligence" icon={Network} label="Routage et Wi-Fi" />
         </nav>
         <small>ADMINISTRATION</small>
         <nav>

@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.discovery.snmp.parser import mac_from_oid_suffix, normalize_mac, parse_neighbors, snmp_integer
-from app.models import ArpEntry, Asset, AssetAddress, AssetIdentifier, InterfaceMetric, NetworkDevice, PortMacEntry, SwitchPort, TopologyLink, TopologyNode, Vlan
+from app.discovery.snmp.parser import mac_from_oid_suffix, normalize_mac, parse_inet_routes, parse_ip_neighbors, parse_ipv4_routes, parse_neighbors, snmp_integer
+from app.models import ArpEntry, Asset, AssetAddress, AssetIdentifier, InterfaceMetric, NetworkDevice, PortMacEntry, RouteEntry, SwitchPort, TopologyLink, TopologyNode, Vlan
 from app.services.alerts import open_alert,resolve_alert
 
 
@@ -15,7 +15,7 @@ def counter_rate(current:int|None,previous:int|None,seconds:float)->float|None:
     return (current-previous)*8/seconds
 
 
-async def ingest_infrastructure(db:AsyncSession,asset:Asset,ip:str,sections:dict):
+async def ingest_infrastructure(db:AsyncSession,asset:Asset,ip:str,sections:dict,vrf_id:str|None=None):
     system={x["oid"]:x["value"] for x in sections.get("system",[])}
     device=(await db.execute(select(NetworkDevice).where(NetworkDevice.asset_id==asset.id))).scalar_one_or_none()
     if not device:
@@ -84,6 +84,23 @@ async def ingest_infrastructure(db:AsyncSession,asset:Asset,ip:str,sections:dict
         if not mac:continue
         entry=(await db.execute(select(ArpEntry).where(ArpEntry.network_device_id==device.id,ArpEntry.ip_address==address,ArpEntry.mac_address==mac))).scalar_one_or_none()
         if not entry:db.add(ArpEntry(network_device_id=device.id,ip_address=address,mac_address=mac,if_index=if_index))
+        else:entry.if_index=if_index;entry.last_seen=datetime.now(timezone.utc)
+    for neighbor in parse_ip_neighbors(sections.get("neighbors",[])):
+        entry=(await db.execute(select(ArpEntry).where(ArpEntry.network_device_id==device.id,ArpEntry.ip_address==neighbor["ip_address"],ArpEntry.mac_address==neighbor["mac_address"]))).scalar_one_or_none()
+        if not entry:db.add(ArpEntry(network_device_id=device.id,**neighbor))
+        else:entry.if_index=neighbor["if_index"];entry.last_seen=datetime.now(timezone.utc)
+    routes=parse_ipv4_routes(sections.get("routes_v4",[]))+parse_inet_routes(sections.get("routes_inet",[]));seen_routes=set()
+    for route in routes:
+        key=(route["prefix"],route.get("next_hop"),route["protocol"]);seen_routes.add(key)
+        route_scope=RouteEntry.vrf_id.is_(None) if vrf_id is None else RouteEntry.vrf_id==vrf_id
+        existing=(await db.execute(select(RouteEntry).where(RouteEntry.network_device_id==device.id,route_scope,RouteEntry.prefix==route["prefix"],RouteEntry.next_hop==route.get("next_hop"),RouteEntry.protocol==route["protocol"]))).scalar_one_or_none()
+        if not existing:db.add(RouteEntry(network_device_id=device.id,vrf_id=vrf_id,**route))
+        else:existing.if_index=route.get("if_index");existing.metric=route.get("metric");existing.active=True;existing.last_seen=datetime.now(timezone.utc)
+    route_errors=set(sections.get("_errors",{}))&{"routes_v4","routes_inet"}
+    if not route_errors:
+        route_scope=RouteEntry.vrf_id.is_(None) if vrf_id is None else RouteEntry.vrf_id==vrf_id
+        for stale_route in (await db.execute(select(RouteEntry).where(RouteEntry.network_device_id==device.id,route_scope,RouteEntry.active.is_(True)))).scalars():
+            if (stale_route.prefix,stale_route.next_hop,stale_route.protocol) not in seen_routes:stale_route.active=False
     bridge_map={_index(x["oid"]):int(x["value"]) for x in sections.get("bridge_ports",[]) if x["value"].isdigit()}
     fdb_ports={mac_from_oid_suffix(x["oid"]):bridge_map.get(int(x["value"]),int(x["value"])) for x in sections.get("fdb",[]) if ".17.4.3.1.2." in x["oid"] and mac_from_oid_suffix(x["oid"]) and x["value"].isdigit()}
     for mac,bridge_port in fdb_ports.items():

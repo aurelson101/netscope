@@ -94,5 +94,5 @@ async def correlate(db: AsyncSession, result: DiscoveryResult, scan_id: str | No
     await db.commit()
     if result.source == "snmp":
         from app.services.infrastructure import ingest_infrastructure
-        await ingest_infrastructure(db, asset, ip, result.raw.get("sections", {}))
+        await ingest_infrastructure(db, asset, ip, result.raw.get("sections", {}),vrf_id)
     return asset

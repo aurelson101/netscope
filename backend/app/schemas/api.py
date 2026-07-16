@@ -36,7 +36,7 @@ class ScanCreate(BaseModel):
 
 class PassiveConnectorCreate(BaseModel):
     name: str = Field(min_length=2,max_length=120)
-    kind: str = Field(pattern=r"^(dhcp|arp|dns|generic)$")
+    kind: str = Field(pattern=r"^(dhcp|arp|dns|wireless|generic)$")
     vrf_id: str | None = None
 
 class PassiveEvent(BaseModel):
@@ -74,6 +74,23 @@ class ProbeTaskResult(BaseModel):
     status: str = Field(pattern=r"^(completed|failed)$")
     error: str | None = Field(default=None,max_length=2000)
     observations: list[ProbeObservation] = Field(default_factory=list,max_length=10000)
+
+class WirelessObservationCreate(BaseModel):
+    asset_id: str
+    radio_name: str = Field(min_length=1,max_length=120)
+    band: str | None = Field(default=None,pattern=r"^(2\.4 GHz|5 GHz|6 GHz)$")
+    channel: int | None = Field(default=None,ge=1,le=233)
+    channel_width_mhz: int | None = Field(default=None,ge=5,le=320)
+    tx_power_dbm: float | None = Field(default=None,ge=-20,le=100)
+    utilization: float | None = Field(default=None,ge=0,le=100)
+    noise_dbm: float | None = Field(default=None,ge=-150,le=0)
+    radio_client_count: int = Field(default=0,ge=0,le=100000)
+    ssid: str = Field(min_length=1,max_length=255)
+    bssid: str = Field(min_length=12,max_length=32)
+    security: str | None = Field(default=None,max_length=40)
+    vlan_id: int | None = Field(default=None,ge=1,le=4094)
+    hidden: bool = False
+    client_count: int = Field(default=0,ge=0,le=100000)
 
 class ScanScheduleCreate(BaseModel):
     name: str = Field(min_length=2,max_length=120)

@@ -5,6 +5,8 @@ from app.discovery.snmp.parser import parse_walk
 OIDS={
  "system":"1.3.6.1.2.1.1", "interfaces":"1.3.6.1.2.1.2.2.1",
  "if_names":"1.3.6.1.2.1.31.1.1.1", "arp":"1.3.6.1.2.1.4.22.1",
+ "neighbors":"1.3.6.1.2.1.4.35.1", "routes_v4":"1.3.6.1.2.1.4.24.4.1",
+ "routes_inet":"1.3.6.1.2.1.4.24.7.1",
  "fdb":"1.3.6.1.2.1.17.4.3.1", "vlans":"1.3.6.1.2.1.17.7.1.4.3.1",
  "bridge_ports":"1.3.6.1.2.1.17.1.4.1.2",
  "lldp":"1.0.8802.1.1.2.1.4", "cdp":"1.3.6.1.4.1.9.9.23.1.2.1.1",
@@ -28,16 +30,18 @@ class SnmpPlugin(DiscoveryPlugin):
             if not credential.get("community"):raise ValueError("Communauté SNMPv2c manquante")
             base=["snmpbulkwalk","-v2c","-c",credential["community"],*timeout]
         else:raise ValueError("Version SNMP non prise en charge (utilisez 3 ou 2c)")
-        sections={}
+        sections={};section_errors={}
         for name,oid in OIDS.items():
             proc=await asyncio.create_subprocess_exec(*base,target,oid,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
             try:stdout,stderr=await asyncio.wait_for(proc.communicate(),timeout=options.get("section_timeout",30))
             except TimeoutError:
                 proc.kill();await proc.communicate()
                 if name=="system":raise RuntimeError("La collecte SNMP système a dépassé le délai autorisé") from None
-                sections[name]=[];continue
+                sections[name]=[];section_errors[name]="timeout";continue
             sections[name]=parse_walk(stdout.decode(errors="replace"))
             if name=="system" and proc.returncode!=0: raise RuntimeError(stderr.decode(errors="replace")[:500])
+            if proc.returncode!=0:section_errors[name]=stderr.decode(errors="replace")[:500]
+        sections["_errors"]=section_errors
         facts=[{"field":"ip","value":target,"confidence":1.0},{"field":"status","value":"online","confidence":1.0}]
         system={row["oid"]:row["value"] for row in sections["system"]}
         for oid,value in system.items():

@@ -363,6 +363,51 @@ class ArpEntry(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class RouteEntry(Base):
+    __tablename__ = "route_entries"
+    __table_args__ = (UniqueConstraint("network_device_id","vrf_id","prefix","next_hop","protocol",name="uq_route_entry_identity"),)
+    id: Mapped[str] = mapped_column(String(36),primary_key=True,default=lambda:str(uuid.uuid4()))
+    network_device_id: Mapped[str] = mapped_column(ForeignKey("network_devices.id"),index=True)
+    vrf_id: Mapped[str | None] = mapped_column(ForeignKey("vrfs.id"),index=True)
+    prefix: Mapped[str] = mapped_column(String(64),index=True)
+    next_hop: Mapped[str | None] = mapped_column(String(64))
+    if_index: Mapped[int | None] = mapped_column(Integer)
+    protocol: Mapped[str] = mapped_column(String(30),default="unknown")
+    metric: Mapped[int | None] = mapped_column(Integer)
+    active: Mapped[bool] = mapped_column(Boolean,default=True)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
+
+
+class WirelessRadio(Base):
+    __tablename__ = "wireless_radios"
+    __table_args__ = (UniqueConstraint("asset_id","radio_name",name="uq_wireless_radio_asset_name"),)
+    id: Mapped[str] = mapped_column(String(36),primary_key=True,default=lambda:str(uuid.uuid4()))
+    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id"),index=True)
+    radio_name: Mapped[str] = mapped_column(String(120))
+    band: Mapped[str | None] = mapped_column(String(20))
+    channel: Mapped[int | None] = mapped_column(Integer)
+    channel_width_mhz: Mapped[int | None] = mapped_column(Integer)
+    tx_power_dbm: Mapped[float | None] = mapped_column(Float)
+    utilization: Mapped[float | None] = mapped_column(Float)
+    noise_dbm: Mapped[float | None] = mapped_column(Float)
+    client_count: Mapped[int] = mapped_column(Integer,default=0)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
+
+
+class WirelessNetwork(Base):
+    __tablename__ = "wireless_networks"
+    __table_args__ = (UniqueConstraint("bssid",name="uq_wireless_network_bssid"),)
+    id: Mapped[str] = mapped_column(String(36),primary_key=True,default=lambda:str(uuid.uuid4()))
+    radio_id: Mapped[str] = mapped_column(ForeignKey("wireless_radios.id"),index=True)
+    ssid: Mapped[str] = mapped_column(String(255),index=True)
+    bssid: Mapped[str] = mapped_column(String(32),index=True)
+    security: Mapped[str | None] = mapped_column(String(40))
+    vlan_id: Mapped[int | None] = mapped_column(Integer)
+    hidden: Mapped[bool] = mapped_column(Boolean,default=False)
+    client_count: Mapped[int] = mapped_column(Integer,default=0)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
+
+
 class TopologyNode(Base):
     __tablename__ = "topology_nodes"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

@@ -11,3 +11,6 @@ def test_snmp_does_not_walk_a_whole_undiscovered_network():
 
 def test_nmap_keeps_original_network_target():
     assert module_targets("nmap","192.168.1.0/24",set())==["192.168.1.0/24"]
+
+def test_arp_is_skipped_for_ipv6():
+    assert module_targets("arp","2001:db8::/64",set())==[]

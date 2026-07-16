@@ -165,7 +165,7 @@ export function Ipam() {
                   <td>{vrfs.find((v) => v.id === p.vrf_id)?.name || "Globale"}</td>
                   <td>
                     <span className="confidence">
-                      {p.used} / {p.used + p.available} · {p.utilization}%
+                      {p.used} / {p.capacity || p.used + p.available} · {p.utilization}%
                     </span>
                   </td>
                   <td>

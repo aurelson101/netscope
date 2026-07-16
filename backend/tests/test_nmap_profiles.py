@@ -1,5 +1,5 @@
 import pytest
-from app.discovery.nmap.plugin import build_nmap_args
+from app.discovery.nmap.plugin import build_nmap_args,build_scan_args
 
 def test_udp_profile_is_rate_limited():
     args=build_nmap_args({"profile":"udp"})
@@ -11,3 +11,6 @@ def test_unknown_profile_is_rejected():
 
 def test_unsafe_rate_is_rejected():
     with pytest.raises(ValueError,match="compris"):build_nmap_args({"profile":"deep","max_rate":5001})
+
+def test_ipv6_target_enables_nmap_ipv6_mode():
+    assert build_scan_args("2001:db8::/64",{"profile":"fast"})[0]=="-6"

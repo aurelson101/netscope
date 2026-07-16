@@ -37,6 +37,7 @@ const Datacenter = lazy(() =>
     import("./pages/Connectors").then((x) => ({ default: x.Connectors })),
   ),
   Probes = lazy(() => import("./pages/Probes").then((x) => ({ default: x.Probes }))),
+  NetworkIntelligence = lazy(() => import("./pages/NetworkIntelligence").then((x) => ({ default: x.NetworkIntelligence }))),
   Networks = lazy(() =>
     import("./pages/Networks").then((x) => ({ default: x.Networks })),
   ),
@@ -75,6 +76,7 @@ function App() {
   if (path === "/scans") return <Scans />;
   if (path === "/connectors") return <Connectors />;
   if (path === "/probes") return <Probes />;
+  if (path === "/network-intelligence") return <NetworkIntelligence />;
   if (path === "/networks") return <Networks />;
   if (path === "/topology") return <Topology />;
   return (

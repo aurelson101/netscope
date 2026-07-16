@@ -24,17 +24,18 @@ from sqlalchemy.orm import selectinload
 from app.core.security import create_token, current_user, decode_token, hash_password, require, verify_password
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, InterfaceMetric, IpRange, IpamAddress, IpamPrefix, NetworkDevice, NetworkIdentityBinding, PassiveConnector, PassiveEventReceipt, PortMacEntry, Probe, RawObservation, ReportSchedule, Role, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf
-from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PassiveConnectorCreate, PassiveEventBatch, PasswordChange, PrefixCreate, PrefixUpdate, ProbeCreate, ProbeHeartbeat, ProbeTaskResult, ReportEmail, ReportScheduleCreate, ReportScheduleUpdate, ScanCreate, ScanOut, ScanScheduleCreate, ScanScheduleUpdate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate
+from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, InterfaceMetric, IpRange, IpamAddress, IpamPrefix, NetworkDevice, NetworkIdentityBinding, PassiveConnector, PassiveEventReceipt, PortMacEntry, Probe, RawObservation, ReportSchedule, Role, RouteEntry, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf, WirelessNetwork, WirelessRadio
+from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PassiveConnectorCreate, PassiveEventBatch, PasswordChange, PrefixCreate, PrefixUpdate, ProbeCreate, ProbeHeartbeat, ProbeTaskResult, ReportEmail, ReportScheduleCreate, ReportScheduleUpdate, ScanCreate, ScanOut, ScanScheduleCreate, ScanScheduleUpdate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate, WirelessObservationCreate
 from app.services.topology import ensure_asset_node, rebuild_inferred_topology
 from app.core.secrets import decrypt_secret, encrypt_secret
 from app.services.safety import validate_target
-from app.services.vendors import MOBILE_VENDORS,normalize_vendor
+from app.services.vendors import MOBILE_VENDORS,normalize_mac,normalize_vendor
 from app.services.passive import authenticate_connector,issue_connector_token,validate_event_time
 from app.discovery.base import DiscoveryResult
 from app.correlation.engine import correlate
 from app.services.probes import authenticate_probe,issue_probe_token,observation_in_scope
 from app.services.alerts import open_alert,resolve_alert
+from app.services.ipam import usable_capacity
 
 router = APIRouter(prefix="/api/v1")
 
@@ -750,6 +751,81 @@ async def network_devices(db: AsyncSession = Depends(get_db), _=Depends(current_
         result.append({"id":device.id,"asset_id":device.asset_id,"management_ip":device.management_ip,"sys_name":device.sys_name,"sys_descr":device.sys_descr,"sys_object_id":device.sys_object_id,"last_polled":device.last_polled,"ports":port_rows})
     return result
 
+@router.get("/routes")
+async def routes(device_id:str|None=None,vrf_id:str|None=None,active:bool|None=True,search:str|None=None,db:AsyncSession=Depends(get_db),_=Depends(current_user)):
+    query=select(RouteEntry).order_by(RouteEntry.prefix,RouteEntry.next_hop)
+    if device_id:query=query.where(RouteEntry.network_device_id==device_id)
+    if vrf_id:query=query.where(vrf_scope(RouteEntry.vrf_id,None if vrf_id=="global" else vrf_id))
+    if active is not None:query=query.where(RouteEntry.active==active)
+    rows=(await db.execute(query.limit(5000))).scalars().all();devices={x.id:x for x in (await db.execute(select(NetworkDevice).where(NetworkDevice.id.in_({row.network_device_id for row in rows})))).scalars()} if rows else {};result=[]
+    for row in rows:
+        if search and search.casefold() not in f"{row.prefix} {row.next_hop or ''} {row.protocol}".casefold():continue
+        device=devices.get(row.network_device_id)
+        result.append({"id":row.id,"network_device_id":row.network_device_id,"device_name":device.sys_name if device else None,"vrf_id":row.vrf_id,"prefix":row.prefix,"version":ipaddress.ip_network(row.prefix).version,"next_hop":row.next_hop,"if_index":row.if_index,"protocol":row.protocol,"metric":row.metric,"active":row.active,"last_seen":row.last_seen})
+    return result
+
+@router.get("/wireless")
+async def wireless(db:AsyncSession=Depends(get_db),_=Depends(current_user)):
+    radios=(await db.execute(select(WirelessRadio).order_by(WirelessRadio.radio_name))).scalars().all();result=[]
+    for radio in radios:
+        asset=await db.get(Asset,radio.asset_id);networks=(await db.execute(select(WirelessNetwork).where(WirelessNetwork.radio_id==radio.id).order_by(WirelessNetwork.ssid))).scalars().all()
+        result.append({"id":radio.id,"asset_id":radio.asset_id,"asset_name":asset.hostname if asset else None,"radio_name":radio.radio_name,"band":radio.band,"channel":radio.channel,"channel_width_mhz":radio.channel_width_mhz,"tx_power_dbm":radio.tx_power_dbm,"utilization":radio.utilization,"noise_dbm":radio.noise_dbm,"client_count":radio.client_count,"last_seen":radio.last_seen,"networks":[{"id":x.id,"ssid":x.ssid,"bssid":x.bssid,"security":x.security,"vlan_id":x.vlan_id,"hidden":x.hidden,"client_count":x.client_count,"last_seen":x.last_seen} for x in networks]})
+    return result
+
+async def ingest_wireless_observation(data:WirelessObservationCreate,db:AsyncSession,user_id:str|None=None):
+    asset=await db.get(Asset,data.asset_id)
+    if not asset:raise HTTPException(404,"Point d'accès introuvable")
+    bssid=normalize_mac(data.bssid)
+    if not bssid:raise HTTPException(422,"BSSID invalide")
+    now=datetime.now(timezone.utc);radio=(await db.execute(select(WirelessRadio).where(WirelessRadio.asset_id==asset.id,WirelessRadio.radio_name==data.radio_name))).scalar_one_or_none()
+    previous_utilization=radio.utilization if radio else None
+    if not radio:radio=WirelessRadio(asset_id=asset.id,radio_name=data.radio_name);db.add(radio);await db.flush()
+    radio.band=data.band;radio.channel=data.channel;radio.channel_width_mhz=data.channel_width_mhz;radio.tx_power_dbm=data.tx_power_dbm;radio.utilization=data.utilization;radio.noise_dbm=data.noise_dbm;radio.client_count=data.radio_client_count;radio.last_seen=now
+    network=(await db.execute(select(WirelessNetwork).where(WirelessNetwork.bssid==bssid))).scalar_one_or_none()
+    if not network:network=WirelessNetwork(radio_id=radio.id,ssid=data.ssid,bssid=bssid);db.add(network)
+    network.radio_id=radio.id;network.ssid=data.ssid;network.security=data.security;network.vlan_id=data.vlan_id;network.hidden=data.hidden;network.client_count=data.client_count;network.last_seen=now
+    if asset.device_type=="unknown":asset.device_type="wireless access point";db.add(AssetHistory(asset_id=asset.id,event_type="device_type_inferred",old_value="unknown",new_value="wireless access point"))
+    weak=(data.security or "").upper() in ("","OPEN","WEP","WPA","WPA1")
+    fingerprint=f"wireless_weak_security:{bssid}"
+    if weak:await open_alert(db,fingerprint=fingerprint,kind="wireless_weak_security",severity="critical",title="Réseau Wi-Fi insuffisamment sécurisé",message=f"Le SSID {data.ssid} ({bssid}) utilise {data.security or 'aucune sécurité'}.",asset_id=asset.id,details={"ssid":data.ssid,"bssid":bssid,"security":data.security})
+    else:await resolve_alert(db,fingerprint)
+    utilization_fingerprint=f"wireless_radio_saturation:{radio.id}"
+    if data.utilization is not None and previous_utilization is not None and data.utilization>=80 and previous_utilization>=80:await open_alert(db,fingerprint=utilization_fingerprint,kind="wireless_radio_saturation",severity="warning",title="Radio Wi-Fi fortement utilisée",message=f"La radio {data.radio_name} de {asset.hostname or asset.id} dépasse 80 % sur deux observations.",asset_id=asset.id,details={"radio_id":radio.id,"utilization":data.utilization,"band":data.band,"channel":data.channel})
+    elif data.utilization is not None and data.utilization<60:await resolve_alert(db,utilization_fingerprint)
+    db.add(AuditLog(user_id=user_id,action="wireless_observation_upserted",details={"asset_id":asset.id,"ssid":data.ssid,"bssid":bssid}));await db.commit();return {"radio_id":radio.id,"network_id":network.id,"bssid":bssid,"weak_security":weak}
+
+@router.post("/wireless/observations")
+async def upsert_wireless(data:WirelessObservationCreate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
+    return await ingest_wireless_observation(data,db,user.id)
+
+@router.post("/wireless-ingest")
+async def wireless_ingest(data:WirelessObservationCreate,x_connector_token:str|None=Header(default=None),db:AsyncSession=Depends(get_db)):
+    connector=await authenticate_connector(db,x_connector_token)
+    if connector.kind!="wireless":raise HTTPException(403,"Ce jeton n'appartient pas à un connecteur Wi-Fi")
+    limiter=redis.from_url(settings.redis_url,decode_responses=True);key=f"wireless-ingest:{connector.id}"
+    try:
+        requests=await limiter.incr(key)
+        if requests==1:await limiter.expire(key,60)
+        if requests>120:raise HTTPException(429,"Débit d'ingestion Wi-Fi dépassé",headers={"Retry-After":"60"})
+    except HTTPException:raise
+    except Exception:pass
+    finally:await limiter.aclose()
+    connector.event_count+=1;connector.last_seen_at=datetime.now(timezone.utc);connector.last_error=None
+    try:return await ingest_wireless_observation(data,db)
+    except HTTPException as exc:
+        connector.last_error=str(exc.detail)[:500];await db.commit();raise
+
+@router.delete("/wireless/networks/{network_id}")
+async def delete_wireless_network(network_id:str,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    network=await db.get(WirelessNetwork,network_id)
+    if not network:raise HTTPException(404,"Réseau Wi-Fi introuvable")
+    bssid=network.bssid;radio_id=network.radio_id;await resolve_alert(db,f"wireless_weak_security:{bssid}");await db.delete(network);await db.flush()
+    remaining=await db.scalar(select(WirelessNetwork.id).where(WirelessNetwork.radio_id==radio_id).limit(1))
+    if not remaining:
+        radio=await db.get(WirelessRadio,radio_id)
+        if radio:await resolve_alert(db,f"wireless_radio_saturation:{radio.id}");await db.delete(radio)
+    db.add(AuditLog(user_id=user.id,action="wireless_network_deleted",details={"network_id":network_id,"bssid":bssid}));await db.commit();return {"deleted":True}
+
 @router.get("/switch-ports/{port_id}/metrics")
 async def port_metrics(port_id:str,hours:int=Query(24,ge=1,le=2160),limit:int=Query(500,ge=1,le=5000),db:AsyncSession=Depends(get_db),_=Depends(current_user)):
     if not await db.get(SwitchPort,port_id):raise HTTPException(404,"Interface introuvable")
@@ -799,8 +875,8 @@ async def ipam_prefixes(db:AsyncSession=Depends(get_db),_=Depends(current_user))
     usage=dict((await db.execute(select(IpamAddress.prefix_id,func.count()).where(IpamAddress.prefix_id.is_not(None)).group_by(IpamAddress.prefix_id))).all())
     for prefix in prefixes:
         used=usage.get(prefix.id,0)
-        size=max(ipaddress.ip_network(prefix.prefix).num_addresses-2,1)
-        result.append({"id":prefix.id,"prefix":prefix.prefix,"name":prefix.name,"status":prefix.status,"role":prefix.role,"vlan_id":prefix.vlan_id,"site_id":prefix.site_id,"vrf_id":prefix.vrf_id,"parent_id":prefix.parent_id,"gateway":prefix.gateway,"dns_servers":prefix.dns_servers,"description":prefix.description,"used":used,"available":max(size-used,0),"utilization":round(used/size*100,2)})
+        size=max(usable_capacity(prefix.prefix),1)
+        result.append({"id":prefix.id,"prefix":prefix.prefix,"name":prefix.name,"status":prefix.status,"role":prefix.role,"vlan_id":prefix.vlan_id,"site_id":prefix.site_id,"vrf_id":prefix.vrf_id,"parent_id":prefix.parent_id,"gateway":prefix.gateway,"dns_servers":prefix.dns_servers,"description":prefix.description,"used":used,"available":max(size-used,0),"capacity":str(size),"utilization":round(used/size*100,6 if size>2**53 else 2)})
     return result
 
 

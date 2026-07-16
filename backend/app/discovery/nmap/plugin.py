@@ -1,4 +1,4 @@
-import asyncio
+import asyncio,ipaddress
 from app.discovery.base import DiscoveryPlugin
 from app.discovery.nmap.parser import parse_nmap_xml
 
@@ -17,11 +17,15 @@ def build_nmap_args(options:dict)->list[str]:
     if not 1<=max_rate<=5000:raise ValueError("Le débit Nmap doit être compris entre 1 et 5000 paquets/s")
     return [*NMAP_PROFILES[profile],"-oX","-","--max-rate",str(max_rate)]
 
+def build_scan_args(target:str,options:dict)->list[str]:
+    args=build_nmap_args(options)
+    return ["-6",*args] if ipaddress.ip_network(target,strict=False).version==6 else args
+
 
 class NmapPlugin(DiscoveryPlugin):
     name = "nmap"
     async def discover(self, target: str, options: dict):
-        args=build_nmap_args(options)
+        args=build_scan_args(target,options)
         proc = await asyncio.create_subprocess_exec("nmap", *args, target, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         try:
             stdout,stderr=await asyncio.wait_for(proc.communicate(),timeout=options.get("timeout",900))

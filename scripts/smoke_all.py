@@ -13,7 +13,7 @@ def main():
         except urllib.error.HTTPError as exc:
             detail=exc.read().decode(errors="replace");results.append({"path":path,"method":method,"status":exc.code,"duration_ms":round((time.perf_counter()-started)*1000,1),"ok":False,"error":detail});raise
     form=urllib.parse.urlencode({"username":args.username,"password":args.password}).encode();req=urllib.request.Request(args.base+"/auth/login",data=form,headers={"Content-Type":"application/x-www-form-urlencoded"});token=json.load(urllib.request.urlopen(req,timeout=10))["access_token"]
-    endpoints=["/dashboard","/alerts","/assets","/ipam/prefixes","/ipam/addresses","/networks","/scans","/scan-profiles","/topology","/vendors","/archives/assets","/auth/mfa/status","/credentials","/sites","/vlans","/network-devices","/device-roles","/reports/options","/smtp/status","/system/monitoring","/passive-connectors","/probes"]
+    endpoints=["/dashboard","/alerts","/assets","/ipam/prefixes","/ipam/addresses","/networks","/scans","/scan-profiles","/topology","/vendors","/archives/assets","/auth/mfa/status","/credentials","/sites","/vlans","/network-devices","/routes","/wireless","/device-roles","/reports/options","/smtp/status","/system/monitoring","/passive-connectors","/probes"]
     values={path:request(path) for path in endpoints}
     if values["/network-devices"] and values["/network-devices"][0].get("ports"):request("/switch-ports/"+values["/network-devices"][0]["ports"][0]["id"]+"/metrics")
     test_site=request("/sites","POST",{"name":"Smoke site temporaire "+datetime.now().strftime("%H%M%S"),"description":"Suppression automatique"});request("/sites/"+test_site["id"],"DELETE")
