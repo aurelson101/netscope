@@ -170,7 +170,202 @@ SNMPV2_COMMUNITY=changez-cette-communaute
 
 SNMPv2c ne chiffre ni la communauté ni les données sur le réseau. Limitez-le à un VLAN d’administration isolé et filtré par pare-feu. SNMPv1 n’est pas pris en charge.
 
-## 5. Commandes utiles
+## 5. Guide des menus
+
+Les menus visibles dépendent du rôle connecté :
+
+- **Lecteur** : consulte les inventaires, alertes, cartes, rapports et archives ;
+- **Opérateur** : dispose aussi des actions d’exploitation, notamment les scans,
+  l’IPAM, les paramètres et les sauvegardes de configurations ;
+- **Administrateur** : gère en plus les utilisateurs, connecteurs, sondes,
+  identifiants sensibles et restaurations réseau.
+
+### Vue principale
+
+#### Tableau de bord
+
+Cette page résume l’état du réseau : nombre d’équipements, disponibilité,
+alertes, constructeurs, systèmes détectés et activité récente. Utilisez-la pour
+repérer rapidement une hausse des équipements hors ligne ou des alertes
+critiques. Cliquez sur une carte ou un graphique pour rejoindre la vue détaillée
+correspondante. Les indicateurs reposent sur les dernières observations ; un
+inventaire ancien doit être actualisé par un scan ou un connecteur passif.
+
+#### Alertes
+
+La liste centralise notamment les nouveaux équipements, conflits IP/MAC,
+équipements hors ligne, échecs de scan, sondes indisponibles, interfaces
+saturées, sécurité Wi-Fi faible et erreurs de sauvegarde/restauration.
+
+- filtrez par état ou sévérité pour traiter d’abord les alertes critiques ;
+- ouvrez l’équipement associé pour examiner ses preuves et son historique ;
+- acquittez une alerte prise en charge et résolvez-la lorsque la cause est
+  corrigée ;
+- évitez de résoudre manuellement une panne encore active : les évaluations
+  automatiques peuvent la rouvrir.
+
+#### Scans
+
+Cette page lance et planifie la découverte active. Saisissez une adresse ou un
+préfixe CIDR, choisissez la VRF, un profil, éventuellement une sonde distante et
+un identifiant SNMP. L’historique indique le module actif, la progression, le
+nombre de résultats et les erreurs. Le diagnostic SNMP/OID permet de tester un
+équipement avant un inventaire complet.
+
+Commencez par **Inventaire rapide** sur un petit réseau privé. Réservez les
+profils TCP/UDP approfondis aux plages autorisées. Une sonde distante doit être
+en ligne, appartenir à la même VRF et annoncer toutes les capacités du profil.
+Les secrets SNMP restent sur le scanner central et ne sont jamais transmis aux
+sondes.
+
+### Infrastructure Lab
+
+#### Vue d’ensemble
+
+La vue Infrastructure Lab présente les équipements réseau gérés, leurs ports,
+VLAN, états administratifs/opérationnels et dernières métriques. Elle sert au
+suivi quotidien des commutateurs et routeurs collectés par SNMP. Deux collectes
+sont nécessaires avant de calculer un débit ; ouvrez une interface pour examiner
+son historique d’utilisation et d’erreurs.
+
+#### Datacenter
+
+Cette page construit la documentation manuelle des sites : lieux, VLAN,
+équipements, services et occupation des adresses. Créez d’abord le réseau dans
+**Réseaux** ou **IPAM**, associez-le au VLAN, puis ajoutez les équipements.
+NetScope refuse une adresse hors préfixe ou déjà utilisée. Utilisez cette vue
+comme source de vérité pour les éléments qui ne peuvent pas être découverts.
+
+#### Équipements
+
+L’inventaire regroupe les actifs manuels et découverts. Recherchez ou filtrez un
+équipement, puis ouvrez sa fiche pour consulter :
+
+- adresses IPv4/IPv6, identifiants et services ;
+- constructeur, modèle, système et niveau de confiance ;
+- preuves brutes, métadonnées et historique d’identité IP/MAC ;
+- état, rôle, site et modifications manuelles.
+
+Archivez plutôt que supprimer un équipement qui doit rester traçable. En cas de
+conflit IP/MAC, examinez l’historique avant de fusionner ou corriger les données.
+
+#### IPAM
+
+L’IPAM gère les préfixes IPv4/IPv6, VRF, passerelles, DNS, plages, réservations
+et adresses. Créez la VRF avant ses préfixes et sélectionnez toujours la bonne
+VRF lors d’un scan. La capacité, le nombre d’adresses utilisées et le taux
+d’occupation sont calculés automatiquement. Avant de supprimer un préfixe,
+contrôlez ses adresses, VLAN et réseaux dépendants.
+
+#### Réseaux
+
+Cette vue déclare les réseaux autorisés et leur état. Elle sert de garde-fou aux
+scans et relie la documentation réseau à l’IPAM. Utilisez un CIDR canonique
+(`192.168.10.0/24`, par exemple), un nom explicite et l’état adapté. La
+suppression d’un réseau ne doit entraîner la purge de son préfixe IPAM qu’après
+vérification des dépendances affichées.
+
+#### Relations
+
+La topologie rassemble les liens manuels et ceux inférés par LLDP/CDP ou par les
+données réseau. Actualisez la topologie après une collecte SNMP, filtrez les
+nœuds trop nombreux et ouvrez un lien pour vérifier ses ports source/destination.
+Les liens manuels permettent de compléter une infrastructure non compatible avec
+LLDP/CDP ; indiquez leur nature afin de les distinguer des relations découvertes.
+
+### Intelligence
+
+#### Constructeurs
+
+Cette page agrège les actifs par constructeur et type d’équipement. Elle aide à
+mesurer l’hétérogénéité du parc et à repérer les matériels non identifiés. Un
+constructeur absent signifie généralement qu’aucune adresse MAC exploitable ou
+preuve SNMP fiable n’a été collectée. Consultez alors la fiche de l’actif et ses
+preuves d’identification.
+
+#### Routage et Wi-Fi
+
+La partie routage affiche les routes IPv4/IPv6, protocoles, next-hops et
+interfaces collectés. La partie Wi-Fi présente contrôleurs, radios, bandes,
+canaux, BSSID, VLAN, sécurité et clients. Vérifiez en priorité les réseaux OPEN,
+WEP ou WPA signalés comme critiques et les radios durablement saturées. Les
+observations Wi-Fi automatisées nécessitent un connecteur de type Wi-Fi créé
+dans **Connecteurs**.
+
+### Administration
+
+#### Rapports
+
+Générez ou envoyez des rapports d’inventaire, IPAM, scans, constructeurs et
+sécurité aux formats proposés. L’envoi nécessite une configuration SMTP valide
+et un expéditeur présent dans `SMTP_SENDERS`. Testez d’abord l’état SMTP, puis
+créez une planification avec une fréquence raisonnable et des destinataires
+autorisés. Vérifiez les journaux du worker si un envoi reste en échec.
+
+#### Archives
+
+Les équipements archivés sont conservés hors de l’inventaire actif avec leur
+traçabilité. Utilisez la restauration pour remettre un actif dans l’inventaire.
+La suppression définitive doit rester exceptionnelle, notamment si l’historique
+est utile à un audit ou à l’analyse d’une ancienne attribution IP.
+
+#### Paramètres
+
+Cette page regroupe les réglages d’exploitation : DNS/PTR, sécurité du compte,
+MFA, options de plateforme et supervision. Le panneau de supervision actualisé
+toutes les quinze secondes affiche les conteneurs, leurs healthchecks,
+redémarrages et l’espace disque disponible. Vert signifie opérationnel ; rouge
+impose de consulter `docker compose logs nom-du-service`. Conservez les codes de
+récupération MFA dans un emplacement sûr avant de fermer la page d’activation.
+
+#### Configurations
+
+Le coffre conserve les accès SSH chiffrés et les versions de configuration des
+équipements Cisco IOS, Arista EOS, Junos et FortiOS. Enregistrez la clé publique
+hôte OpenSSH complète afin d’empêcher une interception, puis sélectionnez
+l’équipement, l’identifiant et la plateforme pour lancer une sauvegarde.
+
+Le téléchargement et la restauration sont réservés aux administrateurs. Avant
+toute restauration, NetScope vérifie l’empreinte de la version et crée une
+sauvegarde de secours. Saisissez exactement `RESTORE nom` ou `RESTORE adresse`.
+FortiOS est volontairement limité à la sauvegarde. Effectuez les restaurations
+pendant une fenêtre de maintenance avec un accès de secours à l’équipement.
+
+#### Connecteurs
+
+Les connecteurs ingèrent des observations passives DHCP, ARP, DNS, génériques ou
+Wi-Fi. À la création ou au renouvellement, copiez immédiatement le jeton : il
+n’est affiché qu’une fois. Configurez la source pour appeler l’endpoint indiqué
+avec `X-Connector-Token`, surveillez sa dernière activité et son dernier message
+d’erreur, puis désactivez ou renouvelez tout jeton suspect. Les identifiants
+d’événement empêchent les doublons lors d’un renvoi.
+
+#### Sondes
+
+Les sondes exécutent ICMP, ARP, Nmap et DNS depuis des sites ou VRF distants sans
+port entrant. Créez la sonde, copiez son jeton à affichage unique, associez le bon
+site et la bonne VRF, puis déployez `probe-agent`. L’état passe en ligne après le
+premier heartbeat. Si elle reste hors ligne, vérifiez l’URL HTTPS, le jeton,
+l’horloge du système et les logs de l’agent. Renouveler le jeton révoque
+immédiatement l’ancien.
+
+#### Utilisateurs
+
+Les administrateurs créent les comptes, attribuent les rôles et activent ou
+désactivent les accès. Utilisez une adresse email comme identifiant, accordez le
+plus petit rôle nécessaire et préférez la désactivation à la suppression pour
+conserver l’audit. Chaque utilisateur doit remplacer son mot de passe initial et
+activer le MFA. Ne partagez jamais un compte administrateur entre plusieurs
+personnes.
+
+### Déconnexion
+
+Le bouton situé à droite de l’utilisateur ferme la session côté serveur et
+efface les données d’authentification du navigateur. Utilisez-le sur tout poste
+partagé ; fermer uniquement l’onglet ne garantit pas la révocation immédiate de
+la session.
+
+## 6. Commandes utiles
 
 ### Configurer l’envoi SMTP des rapports
 
@@ -208,7 +403,7 @@ docker compose down
 
 Ne lancez pas `docker compose down -v` sauf si vous voulez effacer définitivement la base PostgreSQL et les volumes.
 
-## 6. Vérifier l’installation
+## 7. Vérifier l’installation
 
 Lancer la simulation des menus et API en remplaçant le mot de passe :
 
@@ -232,7 +427,7 @@ logs/worker/
 logs/scheduler/
 ```
 
-## 7. Sauvegarder et restaurer
+## 8. Sauvegarder et restaurer
 
 ### Sauvegarde automatique
 
@@ -294,7 +489,7 @@ limitez son accès par ACL et renouvelez régulièrement son mot de passe ou sa 
 FortiOS reste volontairement en sauvegarde seule : sa restauration automatique
 n'est pas déclenchée par cette version.
 
-## 8. Supervision et alertes facultatives
+## 9. Supervision et alertes facultatives
 
 NetScope fournit un profil de supervision avec Prometheus, Grafana,
 Alertmanager, Blackbox Exporter et des exporters PostgreSQL, Redis et
@@ -324,7 +519,7 @@ heures. Pour un accès distant, publiez ces interfaces derrière HTTPS avec une
 authentification ; ne remplacez pas `MONITORING_BIND=127.0.0.1` par `0.0.0.0`
 sur un serveur exposé.
 
-## 9. Dépannage simple
+## 10. Dépannage simple
 
 Lancez d'abord le diagnostic automatique :
 
@@ -400,7 +595,7 @@ Ajoutez le serveur DNS interne dans **Paramètres**, vérifiez qu’un enregistr
 
 Après cinq mots de passe incorrects, NetScope bloque les essais pendant cinq minutes pour protéger le compte. Attendez avant de réessayer.
 
-## 10. Sécurité avant exposition
+## 11. Sécurité avant exposition
 
 Un exemple Caddy complet est fourni dans [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md). Il active HTTPS, HSTS, le renouvellement automatique du certificat et les journaux JSON. Lorsque Caddy tourne sur le même hôte, définissez `HTTP_BIND=127.0.0.1`.
 
@@ -414,7 +609,7 @@ Un exemple Caddy complet est fourni dans [docs/REVERSE_PROXY.md](docs/REVERSE_PR
 
 Le scanner dispose de capacités réseau élevées nécessaires à Nmap. N’ajoutez pas d’autres volumes ou accès hôte au conteneur scanner.
 
-## 11. Fonctionnalités principales
+## 12. Fonctionnalités principales
 
 - inventaire manuel et découvert, édition, archivage et restauration ;
 - IPAM IPv4/IPv6, DNS, préfixes, adresses et utilisation ;
