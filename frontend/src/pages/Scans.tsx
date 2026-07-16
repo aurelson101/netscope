@@ -21,7 +21,7 @@ export function Scans() {
       .then(setProfiles)
       .catch((x) => setError(x.message));
     api<any[]>("/credentials")
-      .then(setCredentials)
+      .then((rows) => setCredentials(rows.filter((row) => row.kind === "snmpv2c" || row.kind === "snmpv3")))
       .catch(() => setCredentials([]));
     api<any[]>("/scan-schedules")
       .then(setSchedules)

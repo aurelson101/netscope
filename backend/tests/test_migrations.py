@@ -8,7 +8,7 @@ def test_migrations_upgrade_and_downgrade(tmp_path,monkeypatch):
     config=Config(str(Path(__file__).parents[1]/"alembic.ini"));config.set_main_option("script_location",str(Path(__file__).parents[1]/"alembic"));config.set_main_option("sqlalchemy.url",f"sqlite:///{database}")
     command.upgrade(config,"head")
     tables=set(inspect(create_engine(f"sqlite:///{database}")).get_table_names())
-    assert {"users","user_sessions","scan_schedules","vrfs","dhcp_reservations","configuration_versions","passive_connectors","passive_event_receipts","probes","interface_metrics","route_entries","wireless_radios","wireless_networks"} <= tables
+    assert {"users","user_sessions","scan_schedules","vrfs","dhcp_reservations","configuration_versions","passive_connectors","passive_event_receipts","probes","interface_metrics","route_entries","wireless_radios","wireless_networks","device_configurations","device_configuration_restores"} <= tables
     inspector=inspect(create_engine(f"sqlite:///{database}"))
     assert {"vrf_id","parent_id"} <= {column["name"] for column in inspector.get_columns("ipam_prefixes")}
     for table in ("asset_addresses","ipam_addresses","scan_jobs","scan_schedules"):
@@ -16,6 +16,7 @@ def test_migrations_upgrade_and_downgrade(tmp_path,monkeypatch):
     assert {"progress","current_module","result_count"} <= {column["name"] for column in inspector.get_columns("scan_jobs")}
     assert {"probe_id","probe_claimed_at","probe_claim_token"} <= {column["name"] for column in inspector.get_columns("scan_jobs")}
     assert "probe_id" in {column["name"] for column in inspector.get_columns("scan_schedules")}
+    assert {"description","last_used_at","updated_at"} <= {column["name"] for column in inspector.get_columns("credentials")}
     command.downgrade(config,"base")
     assert "users" not in inspect(create_engine(f"sqlite:///{database}")).get_table_names()
 

@@ -281,7 +281,39 @@ class Credential(Base):
     kind: Mapped[str] = mapped_column(String(30), default="snmpv3")
     encrypted_secret: Mapped[str] = mapped_column(Text)
     site_id: Mapped[str | None] = mapped_column(ForeignKey("sites.id"))
+    description: Mapped[str | None] = mapped_column(String(255))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now,onupdate=now)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class DeviceConfiguration(Base):
+    __tablename__ = "device_configurations"
+    id: Mapped[str] = mapped_column(String(36),primary_key=True,default=lambda:str(uuid.uuid4()))
+    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id"),index=True)
+    credential_id: Mapped[str | None] = mapped_column(ForeignKey("credentials.id"))
+    platform: Mapped[str] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(20),default="queued",index=True)
+    encrypted_content: Mapped[str | None] = mapped_column(Text)
+    checksum: Mapped[str | None] = mapped_column(String(64))
+    byte_count: Mapped[int | None] = mapped_column(Integer)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
+    captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DeviceConfigurationRestore(Base):
+    __tablename__ = "device_configuration_restores"
+    id: Mapped[str] = mapped_column(String(36),primary_key=True,default=lambda:str(uuid.uuid4()))
+    configuration_id: Mapped[str] = mapped_column(ForeignKey("device_configurations.id"),index=True)
+    pre_backup_id: Mapped[str | None] = mapped_column(ForeignKey("device_configurations.id"))
+    status: Mapped[str] = mapped_column(String(20),default="queued",index=True)
+    error: Mapped[str | None] = mapped_column(Text)
+    requested_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Vlan(Base):

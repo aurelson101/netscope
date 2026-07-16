@@ -15,9 +15,11 @@ from app.discovery.nmap.plugin import NmapPlugin
 from app.discovery.snmp.plugin import SnmpPlugin
 from app.correlation.engine import correlate
 from app.core.secrets import decrypt_secret
-from app.models import Credential, IpamPrefix, ReportSchedule, ScanJob, ScanProfile, ScanSchedule
-from app.services.alerts import evaluate_asset_lifecycle,open_alert
+from app.models import Asset, AssetAddress, AuditLog, Credential, DeviceConfiguration, DeviceConfigurationRestore, IpamPrefix, NetworkDevice, ReportSchedule, ScanJob, ScanProfile, ScanSchedule
+from app.services.alerts import evaluate_asset_lifecycle,open_alert,resolve_alert
 from app.services.probes import evaluate_probe_health
+from app.services.device_config import capture_configuration,config_checksum,restore_configuration
+from app.core.secrets import encrypt_secret
 
 configure_logging();logger=logging.getLogger("netscope.worker")
 celery=Celery("netscope",broker=settings.redis_url,backend=settings.redis_url)
@@ -98,6 +100,57 @@ def evaluate_probe_health_task():return asyncio.run(_evaluate_probe_health())
 
 async def _evaluate_probe_health():
     async with SessionLocal() as db:return await evaluate_probe_health(db)
+
+async def _device_target(db,asset_id:str)->str:
+    device=await db.scalar(select(NetworkDevice).where(NetworkDevice.asset_id==asset_id))
+    if device and device.management_ip:return device.management_ip
+    address=await db.scalar(select(AssetAddress).where(AssetAddress.asset_id==asset_id).order_by(AssetAddress.version,AssetAddress.address))
+    if not address:raise ValueError("Aucune adresse de gestion n'est associée à l'équipement")
+    return address.address
+
+@celery.task(name="backup_device_configuration")
+def backup_device_configuration(configuration_id:str):return asyncio.run(_backup_device_configuration(configuration_id))
+
+async def _backup_device_configuration(configuration_id:str):
+    async with SessionLocal() as db:
+        row=await db.get(DeviceConfiguration,configuration_id)
+        if not row:return
+        row.status="running";await db.commit()
+        try:
+            credential=await db.get(Credential,row.credential_id)
+            if not credential or credential.kind!="ssh":raise ValueError("Identifiant SSH introuvable")
+            target=await _device_target(db,row.asset_id);content=await capture_configuration(target,decrypt_secret(credential.encrypted_secret),row.platform)
+            row.encrypted_content=encrypt_secret({"content":content});row.checksum=config_checksum(content);row.byte_count=len(content.encode());row.status="completed";row.captured_at=datetime.now(timezone.utc);row.error=None;credential.last_used_at=datetime.now(timezone.utc);await db.commit()
+            db.add(AuditLog(user_id=row.created_by,action="device_configuration_backup_completed",details={"configuration_id":row.id,"asset_id":row.asset_id,"checksum":row.checksum}));await db.commit()
+            await resolve_alert(db,f"configuration_backup_failed:{row.asset_id}");await db.commit()
+        except Exception as exc:
+            await db.rollback();row=await db.get(DeviceConfiguration,configuration_id)
+            if row:row.status="failed";row.error=str(exc)[:2000];await db.commit();await open_alert(db,fingerprint=f"configuration_backup_failed:{row.asset_id}",kind="configuration_backup_failed",severity="warning",title="Échec de sauvegarde de configuration",message=f"La sauvegarde de configuration a échoué : {str(exc)[:500]}",asset_id=row.asset_id,details={"configuration_id":row.id});await db.commit()
+
+@celery.task(name="restore_device_configuration")
+def restore_device_configuration(restore_id:str):return asyncio.run(_restore_device_configuration(restore_id))
+
+async def _restore_device_configuration(restore_id:str):
+    async with SessionLocal() as db:
+        restore=await db.get(DeviceConfigurationRestore,restore_id)
+        if not restore:return
+        restore.status="running";restore.started_at=datetime.now(timezone.utc);await db.commit()
+        try:
+            source=await db.get(DeviceConfiguration,restore.configuration_id)
+            if not source or source.status!="completed" or not source.encrypted_content:raise ValueError("Version de configuration indisponible")
+            credential=await db.get(Credential,source.credential_id)
+            if not credential or credential.kind!="ssh":raise ValueError("Identifiant SSH introuvable")
+            target=await _device_target(db,source.asset_id);secret=decrypt_secret(credential.encrypted_secret)
+            desired=decrypt_secret(source.encrypted_content)["content"]
+            if not source.checksum or config_checksum(desired)!=source.checksum:raise ValueError("L'intégrité de la sauvegarde à restaurer est invalide")
+            current=await capture_configuration(target,secret,source.platform)
+            pre=DeviceConfiguration(asset_id=source.asset_id,credential_id=credential.id,platform=source.platform,status="completed",encrypted_content=encrypt_secret({"content":current}),checksum=config_checksum(current),byte_count=len(current.encode()),created_by=restore.requested_by,captured_at=datetime.now(timezone.utc));db.add(pre);await db.flush();restore.pre_backup_id=pre.id;await db.commit()
+            await restore_configuration(target,secret,source.platform,desired)
+            restore.status="completed";restore.finished_at=datetime.now(timezone.utc);credential.last_used_at=datetime.now(timezone.utc);await db.commit()
+            db.add(AuditLog(user_id=restore.requested_by,action="device_configuration_restore_completed",details={"restore_id":restore.id,"configuration_id":source.id,"asset_id":source.asset_id,"pre_backup_id":pre.id}));await resolve_alert(db,f"configuration_restore_failed:{restore.id}");await db.commit()
+        except Exception as exc:
+            await db.rollback();restore=await db.get(DeviceConfigurationRestore,restore_id)
+            if restore:restore.status="failed";restore.error=str(exc)[:2000];restore.finished_at=datetime.now(timezone.utc);await db.commit();source=await db.get(DeviceConfiguration,restore.configuration_id);await open_alert(db,fingerprint=f"configuration_restore_failed:{restore.id}",kind="configuration_restore_failed",severity="critical",title="Échec de restauration réseau",message=f"La restauration de configuration a échoué : {str(exc)[:500]}",asset_id=source.asset_id if source else None,details={"restore_id":restore.id,"pre_backup_id":restore.pre_backup_id});await db.commit()
 
 @celery.task(name="dispatch_due_schedules")
 def dispatch_due_schedules():return asyncio.run(_dispatch_due())

@@ -200,6 +200,28 @@ class SnmpV2CredentialCreate(BaseModel):
     community: str = Field(min_length=1,max_length=255)
     site_id: str | None = None
 
+class SshCredentialCreate(BaseModel):
+    name: str = Field(min_length=2,max_length=120)
+    username: str = Field(min_length=1,max_length=120)
+    password: str | None = Field(default=None,min_length=1,max_length=1024)
+    private_key: str | None = Field(default=None,min_length=32,max_length=32768)
+    passphrase: str | None = Field(default=None,max_length=1024)
+    host_key: str = Field(min_length=32,max_length=4096,description="Clé publique OpenSSH attendue du serveur")
+    port: int = Field(default=22,ge=1,le=65535)
+    site_id: str | None = None
+    description: str | None = Field(default=None,max_length=255)
+
+class SshCredentialRotate(SshCredentialCreate):
+    name: str | None = Field(default=None,min_length=2,max_length=120)
+
+class DeviceConfigurationRequest(BaseModel):
+    asset_id: str
+    credential_id: str
+    platform: str = Field(pattern=r"^(cisco_ios|eos|junos|fortios)$")
+
+class DeviceConfigurationRestoreRequest(BaseModel):
+    confirmation: str = Field(min_length=1,max_length=255)
+
 
 class PrefixCreate(BaseModel):
     prefix: str

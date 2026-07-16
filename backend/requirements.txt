@@ -19,3 +19,4 @@ cryptography==49.0.0
 dnspython==2.7.0
 pyotp==2.9.0
 reportlab==4.4.2
+asyncssh==2.21.1

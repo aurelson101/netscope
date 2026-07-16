@@ -276,6 +276,24 @@ docker compose exec -T postgres pg_restore -U netscope -d netscope --clean --if-
 
 Testez toujours une restauration avant de considérer une sauvegarde comme valide.
 
+### Coffre SSH et configurations des équipements
+
+La page **Administration → Configurations** permet de conserver des identifiants
+SSH chiffrés, de versionner les configurations Cisco IOS, Arista EOS, Junos et
+FortiOS, puis de télécharger une version. La restauration automatique est
+réservée aux administrateurs et disponible pour Cisco IOS, EOS et Junos.
+
+Chaque identifiant doit contenir la clé publique hôte OpenSSH attendue : NetScope
+refuse une connexion si l'équipement présente une autre clé. Avant une
+restauration, NetScope contrôle l'empreinte SHA-256 de la version sélectionnée et
+capture automatiquement la configuration courante comme sauvegarde de secours.
+Une confirmation `RESTORE nom-équipement` ou `RESTORE adresse-ip` est exigée.
+
+En production, utilisez un compte SSH dédié avec les droits minimaux nécessaires,
+limitez son accès par ACL et renouvelez régulièrement son mot de passe ou sa clé.
+FortiOS reste volontairement en sauvegarde seule : sa restauration automatique
+n'est pas déclenchée par cette version.
+
 ## 8. Supervision et alertes facultatives
 
 NetScope fournit un profil de supervision avec Prometheus, Grafana,

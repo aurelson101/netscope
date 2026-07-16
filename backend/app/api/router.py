@@ -24,8 +24,8 @@ from sqlalchemy.orm import selectinload
 from app.core.security import create_token, current_user, decode_token, hash_password, require, verify_password
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, InterfaceMetric, IpRange, IpamAddress, IpamPrefix, NetworkDevice, NetworkIdentityBinding, PassiveConnector, PassiveEventReceipt, PortMacEntry, Probe, RawObservation, ReportSchedule, Role, RouteEntry, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf, WirelessNetwork, WirelessRadio
-from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PassiveConnectorCreate, PassiveEventBatch, PasswordChange, PrefixCreate, PrefixUpdate, ProbeCreate, ProbeHeartbeat, ProbeTaskResult, ReportEmail, ReportScheduleCreate, ReportScheduleUpdate, ScanCreate, ScanOut, ScanScheduleCreate, ScanScheduleUpdate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate, WirelessObservationCreate
+from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceConfiguration, DeviceConfigurationRestore, DeviceRole, DhcpReservation, Evidence, InterfaceMetric, IpRange, IpamAddress, IpamPrefix, NetworkDevice, NetworkIdentityBinding, PassiveConnector, PassiveEventReceipt, PortMacEntry, Probe, RawObservation, ReportSchedule, Role, RouteEntry, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf, WirelessNetwork, WirelessRadio
+from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DeviceConfigurationRequest, DeviceConfigurationRestoreRequest, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PassiveConnectorCreate, PassiveEventBatch, PasswordChange, PrefixCreate, PrefixUpdate, ProbeCreate, ProbeHeartbeat, ProbeTaskResult, ReportEmail, ReportScheduleCreate, ReportScheduleUpdate, ScanCreate, ScanOut, ScanScheduleCreate, ScanScheduleUpdate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SshCredentialCreate, SshCredentialRotate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate, WirelessObservationCreate
 from app.services.topology import ensure_asset_node, rebuild_inferred_topology
 from app.core.secrets import decrypt_secret, encrypt_secret
 from app.services.safety import validate_target
@@ -36,12 +36,19 @@ from app.correlation.engine import correlate
 from app.services.probes import authenticate_probe,issue_probe_token,observation_in_scope
 from app.services.alerts import open_alert,resolve_alert
 from app.services.ipam import usable_capacity
+from app.services.device_config import platform_policy,validate_ssh_secret
 
 router = APIRouter(prefix="/api/v1")
 
 def vrf_scope(column,vrf_id:str|None):return column.is_(None) if vrf_id is None else column==vrf_id
 
 REMOTE_MODULES={"icmp","arp","nmap","dns"}
+
+async def require_snmp_credential(db:AsyncSession,credential_id:str|None)->Credential|None:
+    if not credential_id:return None
+    credential=await db.get(Credential,credential_id)
+    if not credential or credential.kind not in {"snmpv2c","snmpv3"}:raise HTTPException(404,"Identifiant SNMP introuvable")
+    return credential
 
 @router.get("/probes")
 async def probes(db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin,Role.operator))):
@@ -569,7 +576,7 @@ async def create_scan(data: ScanCreate, db: AsyncSession = Depends(get_db), user
     active = await db.scalar(select(func.count()).select_from(ScanJob).where(ScanJob.target == target,vrf_scope(ScanJob.vrf_id,data.vrf_id),vrf_scope(ScanJob.probe_id,data.probe_id),ScanJob.status.in_(["queued","running"])))
     if active: raise HTTPException(409, "Un scan de cette cible est déjà actif")
     if "snmp" in profile.modules and not data.credential_id and not settings.snmp_default_credential:raise HTTPException(422,"Un identifiant SNMP est requis ou configurez un défaut dans .env")
-    if data.credential_id and not await db.get(Credential,data.credential_id):raise HTTPException(404,"Identifiant SNMP introuvable")
+    await require_snmp_credential(db,data.credential_id)
     row = ScanJob(target=target, profile_id=profile.id, credential_id=data.credential_id,vrf_id=data.vrf_id,probe_id=data.probe_id, created_by=user.id); db.add(row); db.add(AuditLog(user_id=user.id, action="scan_created", details={"target":target,"vrf_id":data.vrf_id,"probe_id":data.probe_id})); await db.commit(); await db.refresh(row)
     if probe:return row
     try:
@@ -606,6 +613,7 @@ async def create_scan_schedule(data:ScanScheduleCreate,db:AsyncSession=Depends(g
     profile=await db.get(ScanProfile,data.profile_id)
     if not profile:raise HTTPException(404,"Profil introuvable")
     if data.vrf_id and not await db.get(Vrf,data.vrf_id):raise HTTPException(404,"VRF introuvable")
+    await require_snmp_credential(db,data.credential_id)
     if data.probe_id:
         probe=await db.get(Probe,data.probe_id)
         if not probe or not probe.enabled:raise HTTPException(404,"Sonde active introuvable")
@@ -621,7 +629,7 @@ async def update_scan_schedule(schedule_id:str,data:ScanScheduleUpdate,db:AsyncS
     values=data.model_dump(exclude_unset=True)
     if "target" in values:values["target"]=validate_target(values["target"],confirm_large=True,confirm_public=False)
     if values.get("profile_id") and not await db.get(ScanProfile,values["profile_id"]):raise HTTPException(404,"Profil introuvable")
-    if values.get("credential_id") and not await db.get(Credential,values["credential_id"]):raise HTTPException(404,"Identifiant SNMP introuvable")
+    if "credential_id" in values:await require_snmp_credential(db,values["credential_id"])
     if values.get("vrf_id") and not await db.get(Vrf,values["vrf_id"]):raise HTTPException(404,"VRF introuvable")
     if values.get("probe_id"):
         selected_probe=await db.get(Probe,values["probe_id"])
@@ -646,7 +654,7 @@ async def delete_scan_schedule(schedule_id:str,db:AsyncSession=Depends(get_db),u
 async def test_snmp(data:SnmpTest,db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin,Role.operator))):
     try:target=str(ipaddress.ip_address(data.target))
     except ValueError as exc:raise HTTPException(422,"Adresse cible invalide") from exc
-    credential=await db.get(Credential,data.credential_id) if data.credential_id else None
+    credential=await require_snmp_credential(db,data.credential_id)
     secret=decrypt_secret(credential.encrypted_secret) if credential else settings.snmp_default_credential
     if not secret:raise HTTPException(422,"Identifiant SNMP requis")
     from app.discovery.snmp.plugin import SnmpPlugin
@@ -851,11 +859,92 @@ async def create_snmpv2_credential(data:SnmpV2CredentialCreate,db:AsyncSession=D
     db.add(AuditLog(user_id=user.id,action="credential_created",details={"id":row.id,"kind":"snmpv2c","name":row.name}));await db.commit();await db.refresh(row)
     return {"id":row.id,"name":row.name,"kind":row.kind,"site_id":row.site_id,"created_at":row.created_at}
 
+@router.post("/credentials/ssh")
+async def create_ssh_credential(data:SshCredentialCreate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    if data.site_id and not await db.get(Site,data.site_id):raise HTTPException(404,"Site introuvable")
+    if await db.scalar(select(Credential.id).where(func.lower(Credential.name)==data.name.strip().lower()).limit(1)):raise HTTPException(409,"Un identifiant porte déjà ce nom")
+    secret=data.model_dump(exclude={"name","site_id","description"})
+    try:validate_ssh_secret(secret)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+    row=Credential(name=data.name.strip(),kind="ssh",site_id=data.site_id,description=data.description,encrypted_secret=encrypt_secret(secret));db.add(row);db.add(AuditLog(user_id=user.id,action="credential_created",details={"id":row.id,"kind":"ssh","name":row.name}));await db.commit();await db.refresh(row);return {"id":row.id,"name":row.name,"kind":row.kind,"site_id":row.site_id,"description":row.description,"created_at":row.created_at}
+
+@router.patch("/credentials/{credential_id}/rotate")
+async def rotate_ssh_credential(credential_id:str,data:SshCredentialRotate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    row=await db.get(Credential,credential_id)
+    if not row or row.kind!="ssh":raise HTTPException(404,"Identifiant SSH introuvable")
+    if data.site_id and not await db.get(Site,data.site_id):raise HTTPException(404,"Site introuvable")
+    if data.name and await db.scalar(select(Credential.id).where(func.lower(Credential.name)==data.name.strip().lower(),Credential.id!=row.id).limit(1)):raise HTTPException(409,"Un identifiant porte déjà ce nom")
+    secret=data.model_dump(exclude={"name","site_id","description"})
+    try:validate_ssh_secret(secret)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+    if data.name:row.name=data.name.strip()
+    row.site_id=data.site_id;row.description=data.description;row.encrypted_secret=encrypt_secret(secret);row.updated_at=datetime.now(timezone.utc);db.add(AuditLog(user_id=user.id,action="credential_rotated",details={"id":row.id,"kind":row.kind}));await db.commit();return {"id":row.id,"rotated":True,"updated_at":row.updated_at}
+
+@router.delete("/credentials/{credential_id}")
+async def delete_credential(credential_id:str,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    row=await db.get(Credential,credential_id)
+    if not row:raise HTTPException(404,"Identifiant introuvable")
+    referenced=await db.scalar(select(ScanJob.id).where(ScanJob.credential_id==credential_id).limit(1)) or await db.scalar(select(ScanSchedule.id).where(ScanSchedule.credential_id==credential_id).limit(1)) or await db.scalar(select(DeviceConfiguration.id).where(DeviceConfiguration.credential_id==credential_id).limit(1))
+    if referenced:raise HTTPException(409,"Cet identifiant est référencé par un scan, une planification ou une sauvegarde")
+    details={"id":row.id,"name":row.name,"kind":row.kind};await db.delete(row);db.add(AuditLog(user_id=user.id,action="credential_deleted",details=details));await db.commit();return {"deleted":True}
+
 
 @router.get("/credentials")
 async def credentials(db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin,Role.operator))):
     rows=(await db.execute(select(Credential).order_by(Credential.name))).scalars().all()
-    return [{"id":x.id,"name":x.name,"kind":x.kind,"site_id":x.site_id,"created_at":x.created_at} for x in rows]
+    return [{"id":x.id,"name":x.name,"kind":x.kind,"site_id":x.site_id,"description":x.description,"last_used_at":x.last_used_at,"updated_at":x.updated_at,"created_at":x.created_at} for x in rows]
+
+@router.get("/device-configurations")
+async def device_configurations(asset_id:str|None=None,db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin,Role.operator))):
+    query=select(DeviceConfiguration).order_by(DeviceConfiguration.created_at.desc())
+    if asset_id:query=query.where(DeviceConfiguration.asset_id==asset_id)
+    rows=(await db.execute(query.limit(500))).scalars().all();assets={x.id:x for x in (await db.execute(select(Asset).where(Asset.id.in_({row.asset_id for row in rows})))).scalars()} if rows else {}
+    return [{"id":x.id,"asset_id":x.asset_id,"asset_name":assets[x.asset_id].hostname if x.asset_id in assets else None,"credential_id":x.credential_id,"platform":x.platform,"status":x.status,"checksum":x.checksum,"byte_count":x.byte_count,"error":x.error,"created_by":x.created_by,"created_at":x.created_at,"captured_at":x.captured_at} for x in rows]
+
+@router.post("/device-configurations")
+async def create_device_configuration(data:DeviceConfigurationRequest,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
+    if not await db.get(Asset,data.asset_id):raise HTTPException(404,"Équipement introuvable")
+    credential=await db.get(Credential,data.credential_id)
+    if not credential or credential.kind!="ssh":raise HTTPException(404,"Identifiant SSH introuvable")
+    try:platform_policy(data.platform)
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+    active=await db.scalar(select(DeviceConfiguration.id).where(DeviceConfiguration.asset_id==data.asset_id,DeviceConfiguration.status.in_(["queued","running"])).limit(1))
+    if active:raise HTTPException(409,"Une sauvegarde est déjà active pour cet équipement")
+    row=DeviceConfiguration(**data.model_dump(),status="queued",created_by=user.id);db.add(row);db.add(AuditLog(user_id=user.id,action="device_configuration_backup_requested",details={"asset_id":row.asset_id,"platform":row.platform}));await db.commit();await db.refresh(row)
+    try:
+        from app.workers.tasks import backup_device_configuration
+        backup_device_configuration.apply_async(args=[row.id],queue="scanner",retry=False)
+    except Exception as exc:row.status="failed";row.error="Impossible de joindre la file de tâches";await db.commit();raise HTTPException(503,"Service de sauvegarde indisponible") from exc
+    return {"id":row.id,"status":row.status}
+
+@router.get("/device-configurations/{configuration_id}/download")
+async def download_device_configuration(configuration_id:str,db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin))):
+    row=await db.get(DeviceConfiguration,configuration_id)
+    if not row or row.status!="completed" or not row.encrypted_content:raise HTTPException(404,"Configuration disponible introuvable")
+    content=decrypt_secret(row.encrypted_content)["content"]
+    captured=row.captured_at or row.created_at
+    return Response(content,media_type="text/plain",headers={"Content-Disposition":f'attachment; filename="netscope-device-{row.asset_id}-{captured:%Y%m%d-%H%M%S}.cfg"',"X-Content-Type-Options":"nosniff","Cache-Control":"no-store"})
+
+@router.post("/device-configurations/{configuration_id}/restore")
+async def request_device_configuration_restore(configuration_id:str,data:DeviceConfigurationRestoreRequest,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    configuration=await db.get(DeviceConfiguration,configuration_id)
+    if not configuration or configuration.status!="completed":raise HTTPException(404,"Configuration restaurable introuvable")
+    if not platform_policy(configuration.platform)["restore"]:raise HTTPException(422,"Restauration automatique non prise en charge pour cette plateforme")
+    asset=await db.get(Asset,configuration.asset_id);addresses=(await db.execute(select(AssetAddress).where(AssetAddress.asset_id==configuration.asset_id))).scalars().all();identifiers={asset.hostname if asset else None,*[x.address for x in addresses]};identifiers.discard(None)
+    expected={f"RESTORE {identifier}" for identifier in identifiers}
+    if data.confirmation not in expected:raise HTTPException(422,"Confirmation incorrecte. Saisissez RESTORE suivi du nom ou de l'adresse de l'équipement")
+    active=await db.scalar(select(DeviceConfigurationRestore.id).join(DeviceConfiguration,DeviceConfiguration.id==DeviceConfigurationRestore.configuration_id).where(DeviceConfiguration.asset_id==configuration.asset_id,DeviceConfigurationRestore.status.in_(["queued","running"])).limit(1))
+    if active:raise HTTPException(409,"Une restauration est déjà active pour cet équipement")
+    row=DeviceConfigurationRestore(configuration_id=configuration.id,status="queued",requested_by=user.id);db.add(row);db.add(AuditLog(user_id=user.id,action="device_configuration_restore_requested",details={"configuration_id":configuration.id,"asset_id":configuration.asset_id}));await db.commit();await db.refresh(row)
+    try:
+        from app.workers.tasks import restore_device_configuration
+        restore_device_configuration.apply_async(args=[row.id],queue="scanner",retry=False)
+    except Exception as exc:row.status="failed";row.error="Impossible de joindre la file de tâches";await db.commit();raise HTTPException(503,"Service de restauration indisponible") from exc
+    return {"id":row.id,"status":row.status}
+
+@router.get("/device-configuration-restores")
+async def device_configuration_restores(db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin))):
+    rows=(await db.execute(select(DeviceConfigurationRestore).order_by(DeviceConfigurationRestore.created_at.desc()).limit(200))).scalars().all();return [{"id":x.id,"configuration_id":x.configuration_id,"pre_backup_id":x.pre_backup_id,"status":x.status,"error":x.error,"requested_by":x.requested_by,"created_at":x.created_at,"started_at":x.started_at,"finished_at":x.finished_at} for x in rows]
 
 
 @router.get("/vendors")

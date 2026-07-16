@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   FlaskConical,
   FileText,
+  KeyRound,
   Globe2,
   LogOut,
   Menu,
@@ -92,6 +93,9 @@ export function Layout({
           <Link href="#/archives" icon={Archive} label="Archives" />
           {canOperate(user) && (
             <Link href="#/settings" icon={Settings} label="Paramètres" />
+          )}
+          {canOperate(user) && (
+            <Link href="#/network-configurations" icon={KeyRound} label="Configurations" />
           )}
           {isAdmin(user) && (
             <Link href="#/connectors" icon={Network} label="Connecteurs" />
