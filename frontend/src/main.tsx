@@ -8,6 +8,9 @@ import { token } from "./lib/api";
 const Datacenter = lazy(() =>
     import("./pages/Datacenter").then((x) => ({ default: x.Datacenter })),
   ),
+  Alerts = lazy(() =>
+    import("./pages/Alerts").then((x) => ({ default: x.Alerts })),
+  ),
   Reports = lazy(() =>
     import("./pages/Reports").then((x) => ({ default: x.Reports })),
   ),
@@ -53,6 +56,7 @@ function App() {
   if (!token()) return <Login />;
   const path = (location.hash.slice(1) || "/").split("?")[0];
   if (path === "/") return <Dashboard />;
+  if (path === "/alerts") return <Alerts />;
   if (path === "/lab") return <Lab />;
   if (path === "/datacenter") return <Datacenter />;
   if (path === "/assets") return <Assets />;

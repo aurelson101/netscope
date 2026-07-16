@@ -1,5 +1,6 @@
 import {
   Activity,
+  BellRing,
   Archive,
   Box,
   Building2,
@@ -21,6 +22,7 @@ import { canOperate, isAdmin, useCurrentUser } from "../lib/permissions";
 import { ReactNode, useState } from "react";
 const nav = [
   ["Tableau de bord", ChartNoAxesCombined, "#/"],
+  ["Alertes", BellRing, "#/alerts"],
   ["Scans", ScanSearch, "#/scans"],
 ];
 export function Layout({

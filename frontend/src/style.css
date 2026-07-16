@@ -279,6 +279,60 @@ header h2 {
   color: #798da0;
   margin-top: 3px;
 }
+.alertList {
+  display: grid;
+  gap: 8px;
+}
+.alertItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #29455b;
+  border-radius: 7px;
+  background: #0c1f2e;
+}
+.alertItem > svg {
+  width: 18px;
+  color: #e7b42e;
+  flex: none;
+}
+.alertItem.critical {
+  border-color: #713a39;
+}
+.alertItem.critical > svg {
+  color: #ef6253;
+}
+.alertItem.info > svg {
+  color: #59a2ff;
+}
+.alertItem span {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+}
+.alertItem small,
+.alertItem time {
+  color: #8196a9;
+}
+.alertItem time {
+  font-size: 10px;
+}
+.alertItem > .button {
+  text-decoration: none;
+  white-space: nowrap;
+}
+.alertToolbar {
+  justify-content: flex-start;
+}
+@media (max-width: 750px) {
+  .alertItem {
+    flex-wrap: wrap;
+  }
+  .alertItem span {
+    min-width: calc(100% - 30px);
+  }
+}
 .badge,
 .tag,
 .confidence,

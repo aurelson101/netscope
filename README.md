@@ -320,6 +320,8 @@ Il vérifie également l'espace disque et signale tout journal dépassant 100 Mi
 
 Les administrateurs disposent aussi d'un panneau **Paramètres → Supervision de la plateforme**. Il affiche toutes les quinze secondes l'état de chaque conteneur, son healthcheck, ses redémarrages et l'espace disque disponible. La lecture du socket Docker est isolée dans `docker-monitor` ; l'API principale n'y accède jamais directement.
 
+Le menu **Alertes** conserve les nouveaux équipements, les équipements hors ligne et les scans en échec. Un actif réellement observé passe hors ligne après `ASSET_OFFLINE_MINUTES` (60 minutes par défaut) sans nouvelle observation ; les actifs créés uniquement à la main sont exclus de cette règle. Une nouvelle observation remet automatiquement l'actif en ligne et résout son alerte. Les alertes résolues sont conservées pendant `ALERT_RETENTION_DAYS` (90 jours par défaut).
+
 ### La page ne s’ouvre pas
 
 ```bash

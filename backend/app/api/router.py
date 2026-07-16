@@ -23,7 +23,7 @@ from sqlalchemy.orm import selectinload
 from app.core.security import create_token, current_user, decode_token, hash_password, require, verify_password
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, IpRange, IpamAddress, IpamPrefix, NetworkDevice, PortMacEntry, RawObservation, ReportSchedule, Role, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf
+from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, IpRange, IpamAddress, IpamPrefix, NetworkDevice, PortMacEntry, RawObservation, ReportSchedule, Role, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf
 from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PasswordChange, PrefixCreate, PrefixUpdate, ReportEmail, ReportScheduleCreate, ReportScheduleUpdate, ScanCreate, ScanOut, ScanScheduleCreate, ScanScheduleUpdate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate
 from app.services.topology import ensure_asset_node, rebuild_inferred_topology
 from app.core.secrets import decrypt_secret, encrypt_secret
@@ -176,7 +176,37 @@ async def dashboard(db: AsyncSession = Depends(get_db), _=Depends(current_user))
     by_type = (await db.execute(select(Asset.device_type, func.count()).where(active).group_by(Asset.device_type).order_by(func.count().desc()))).all()
     by_os = (await db.execute(select(Asset.operating_system, func.count()).where(active).group_by(Asset.operating_system).order_by(func.count().desc()).limit(8))).all()
     scans = (await db.execute(select(ScanJob).order_by(ScanJob.created_at.desc()).limit(5))).scalars().all()
-    return {"total": total, "online": counts.get(AssetStatus.online, 0), "offline": counts.get(AssetStatus.offline, 0), "unknown": counts.get(AssetStatus.unknown, 0), "new_24h": new, "by_vendor": [{"label": x or "Inconnu", "value": n} for x,n in by_vendor], "by_type": [{"label": x, "value": n} for x,n in by_type], "by_os": [{"label": x or "Inconnu", "value": n} for x,n in by_os], "recent_scans": [ScanOut.model_validate(s) for s in scans]}
+    alerts=(await db.execute(select(Alert).where(Alert.status.in_(["open","acknowledged"])).order_by(Alert.last_seen.desc()).limit(8))).scalars().all()
+    return {"total": total, "online": counts.get(AssetStatus.online, 0), "offline": counts.get(AssetStatus.offline, 0), "unknown": counts.get(AssetStatus.unknown, 0), "new_24h": new, "by_vendor": [{"label": x or "Inconnu", "value": n} for x,n in by_vendor], "by_type": [{"label": x, "value": n} for x,n in by_type], "by_os": [{"label": x or "Inconnu", "value": n} for x,n in by_os], "recent_scans": [ScanOut.model_validate(s) for s in scans],"recent_alerts":[alert_payload(x) for x in alerts]}
+
+
+def alert_payload(alert:Alert)->dict:
+    return {"id":alert.id,"kind":alert.kind,"severity":alert.severity,"status":alert.status,"title":alert.title,"message":alert.message,"asset_id":alert.asset_id,"details":alert.details,"first_seen":alert.first_seen,"last_seen":alert.last_seen,"acknowledged_at":alert.acknowledged_at,"resolved_at":alert.resolved_at}
+
+
+@router.get("/alerts")
+async def list_alerts(status:str|None=Query(None,pattern=r"^(open|acknowledged|resolved)$"),limit:int=Query(100,ge=1,le=500),db:AsyncSession=Depends(get_db),_=Depends(current_user)):
+    query=select(Alert)
+    if status:query=query.where(Alert.status==status)
+    rows=(await db.execute(query.order_by(Alert.last_seen.desc()).limit(limit))).scalars().all()
+    return [alert_payload(x) for x in rows]
+
+
+@router.post("/alerts/{alert_id}/acknowledge")
+async def acknowledge_alert(alert_id:str,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
+    alert=await db.get(Alert,alert_id)
+    if not alert:raise HTTPException(404,"Alerte introuvable")
+    if alert.status=="resolved":raise HTTPException(409,"Cette alerte est déjà résolue")
+    alert.status="acknowledged";alert.acknowledged_at=datetime.now(timezone.utc);alert.acknowledged_by=user.id
+    db.add(AuditLog(user_id=user.id,action="alert_acknowledged",details={"alert_id":alert.id,"kind":alert.kind}));await db.commit();return alert_payload(alert)
+
+
+@router.post("/alerts/{alert_id}/resolve")
+async def resolve_alert_manually(alert_id:str,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
+    alert=await db.get(Alert,alert_id)
+    if not alert:raise HTTPException(404,"Alerte introuvable")
+    alert.status="resolved";alert.resolved_at=datetime.now(timezone.utc)
+    db.add(AuditLog(user_id=user.id,action="alert_resolved",details={"alert_id":alert.id,"kind":alert.kind}));await db.commit();return alert_payload(alert)
 
 
 def asset_query():

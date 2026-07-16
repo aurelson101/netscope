@@ -9,8 +9,11 @@ from app.services.vendors import infer_mobile_identity
 
 async def recover_admin_access(db)->bool:
     if await db.scalar(select(func.count()).select_from(User).where(User.role==Role.admin,User.active.is_(True))):return False
-    recovery=(await db.execute(select(User).where(func.lower(User.username)==settings.admin_identifier))).scalar_one_or_none()
+    identifiers={settings.admin_identifier,settings.admin_username.strip().casefold()}
+    recovery=(await db.execute(select(User).where(func.lower(User.username).in_(identifiers)).order_by(User.username))).scalars().first()
     if not recovery:return False
+    desired_exists=await db.scalar(select(User.id).where(func.lower(User.username)==settings.admin_identifier,User.id!=recovery.id))
+    if not desired_exists:recovery.username=settings.admin_identifier
     recovery.role=Role.admin;recovery.active=True
     db.add(AuditLog(user_id=recovery.id,action="admin_access_recovered",details={"reason":"no_active_administrator"}))
     return True

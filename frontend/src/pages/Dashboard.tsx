@@ -43,11 +43,12 @@ export function Dashboard() {
   const [d, setD] = useState<any>(),
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
-  useEffect(() => {
+  const load = () => {
     api("/dashboard")
       .then(setD)
       .catch((x) => setError(x.message));
-  }, []);
+  };
+  useEffect(load, []);
   if (error)
     return (
       <Layout title="Tableau de bord">
@@ -69,6 +70,14 @@ export function Dashboard() {
   ];
   const exportAssets = () =>
     downloadAssets().catch((x) => setMessage(x.message));
+  const acknowledge = async (id: string) => {
+    try {
+      await api(`/alerts/${id}/acknowledge`, { method: "POST" });
+      load();
+    } catch (x: any) {
+      setMessage(x.message);
+    }
+  };
   return (
     <Layout title="Tableau de bord">
       {message && <div className="error">{message}</div>}
@@ -217,7 +226,30 @@ export function Dashboard() {
           </div>
         </Panel>
         <Panel title="Dernières alertes">
-          <Empty icon={<AlertTriangle />} text="Aucune alerte récente" />
+          {d.recent_alerts?.length ? (
+            <div className="alertList">
+              {d.recent_alerts.map((alert: any) => (
+                <div className={`alertItem ${alert.severity}`} key={alert.id}>
+                  <AlertTriangle />
+                  <span>
+                    <b>{alert.title}</b>
+                    <small>{alert.message}</small>
+                    <time>{new Date(alert.last_seen).toLocaleString("fr")}</time>
+                  </span>
+                  {editable && alert.status === "open" && (
+                    <button onClick={() => acknowledge(alert.id)}>
+                      Acquitter
+                    </button>
+                  )}
+                  {alert.status === "acknowledged" && (
+                    <em className="badge queued">Acquittée</em>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty icon={<AlertTriangle />} text="Aucune alerte active" />
+          )}
         </Panel>
       </div>
     </Layout>

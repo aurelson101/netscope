@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.discovery.base import DiscoveryResult
 from app.models import Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, Evidence, IpamAddress, IpamPrefix, RawObservation
 from app.services.vendors import infer_mobile_identity,normalize_mac,normalize_vendor,vendor_from_mac
+from app.services.alerts import open_alert,resolve_alert
 
 
 NORMAL_VENDOR={"CISCO SYSTEMS, INC.":"Cisco","CISCO SYSTEMS":"Cisco","HP INC.":"HP Inc.","HEWLETT PACKARD ENTERPRISE":"HPE","UBIQUITI NETWORKS":"Ubiquiti"}
@@ -23,6 +24,7 @@ async def correlate(db: AsyncSession, result: DiscoveryResult, scan_id: str | No
     created=asset is None
     if created:
         asset=Asset(status=AssetStatus.unknown); db.add(asset); await db.flush(); db.add(AssetHistory(asset_id=asset.id,event_type="asset_created",new_value=ip))
+        await open_alert(db,fingerprint=f"new_asset:{asset.id}",kind="new_asset",severity="info",title="Nouvel équipement découvert",message=f"Un nouvel équipement a été découvert à l'adresse {ip}.",asset_id=asset.id,details={"address":ip,"source":result.source})
     archive=await db.get(AssetArchive,asset.id)
     if archive:
         await db.delete(archive)
@@ -61,7 +63,10 @@ async def correlate(db: AsyncSession, result: DiscoveryResult, scan_id: str | No
         if field not in locked and (not getattr(asset,field) or getattr(asset,field)=="unknown"):
             old=getattr(asset,field);setattr(asset,field,value);db.add(AssetHistory(asset_id=asset.id,event_type=f"{field}_inferred",old_value=old,new_value=value))
             asset.confidence=max(asset.confidence,0.68)
-    if facts.get("status",{}).get("value") in ("up","online"): asset.status=AssetStatus.online
+    if facts.get("status",{}).get("value") in ("up","online"):
+        if asset.status!=AssetStatus.online:db.add(AssetHistory(asset_id=asset.id,event_type="status_changed",old_value=asset.status.value,new_value=AssetStatus.online.value))
+        asset.status=AssetStatus.online
+        await resolve_alert(db,f"asset_offline:{asset.id}")
     asset.last_seen=datetime.now(timezone.utc); asset.confidence=max(asset.confidence,max([float(f.get("confidence",0)) for f in result.facts] or [0]))
     for fact in result.facts:
         value=fact["value"]

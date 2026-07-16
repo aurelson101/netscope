@@ -16,11 +16,12 @@ from app.discovery.snmp.plugin import SnmpPlugin
 from app.correlation.engine import correlate
 from app.core.secrets import decrypt_secret
 from app.models import Credential, IpamPrefix, ReportSchedule, ScanJob, ScanProfile, ScanSchedule
+from app.services.alerts import evaluate_asset_lifecycle,open_alert
 
 configure_logging();logger=logging.getLogger("netscope.worker")
 celery=Celery("netscope",broker=settings.redis_url,backend=settings.redis_url)
 celery.conf.task_routes={"execute_scan":{"queue":"scanner"}}
-celery.conf.beat_schedule={"dispatch-due-schedules":{"task":"dispatch_due_schedules","schedule":60.0}}
+celery.conf.beat_schedule={"dispatch-due-schedules":{"task":"dispatch_due_schedules","schedule":60.0},"evaluate-asset-lifecycle":{"task":"evaluate_asset_lifecycle","schedule":float(settings.lifecycle_interval_seconds)}}
 plugins={p.name:p for p in [IcmpPlugin(),ArpPlugin(),NmapPlugin(),DNSPlugin(),SnmpPlugin()]}
 
 def module_targets(module:str,target:str,discovered:set[str])->list[str]:
@@ -73,9 +74,17 @@ async def _execute(job_id:str):
             await db.rollback()
             job=await db.get(ScanJob,job_id)
             if job:job.status="failed";job.error=str(exc)[:2000];job.finished_at=datetime.now(timezone.utc);await db.commit()
+            if job:
+                await open_alert(db,fingerprint=f"scan_failed:{job.id}",kind="scan_failed",severity="warning",title="Échec d'un scan réseau",message=f"Le scan de {job.target} a échoué : {str(exc)[:500]}",details={"scan_id":job.id,"target":job.target});await db.commit()
             logger.exception("scan_failed",extra={"job_id":job_id})
             return
         job.finished_at=datetime.now(timezone.utc); await db.commit();logger.info("scan_completed",extra={"job_id":job.id,"target":job.target})
+
+@celery.task(name="evaluate_asset_lifecycle")
+def evaluate_asset_lifecycle_task():return asyncio.run(_evaluate_asset_lifecycle())
+
+async def _evaluate_asset_lifecycle():
+    async with SessionLocal() as db:return await evaluate_asset_lifecycle(db)
 
 @celery.task(name="dispatch_due_schedules")
 def dispatch_due_schedules():return asyncio.run(_dispatch_due())
