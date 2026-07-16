@@ -179,6 +179,29 @@ class RawObservation(Base):
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class PassiveConnector(Base):
+    __tablename__ = "passive_connectors"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    vrf_id: Mapped[str | None] = mapped_column(ForeignKey("vrfs.id"), index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    event_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class PassiveEventReceipt(Base):
+    __tablename__ = "passive_event_receipts"
+    __table_args__ = (UniqueConstraint("connector_id","event_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    connector_id: Mapped[str] = mapped_column(ForeignKey("passive_connectors.id"), index=True)
+    event_id: Mapped[str] = mapped_column(String(120))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Evidence(Base):
     __tablename__ = "evidence"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

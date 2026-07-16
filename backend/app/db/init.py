@@ -50,7 +50,7 @@ async def init_db():
         else:await recover_admin_access(db)
         if not await db.scalar(select(Site.id).limit(1)): db.add(Site(name="Principal",description="Site principal"))
         if not await db.scalar(select(ScanProfile.id).limit(1)):
-            db.add_all([ScanProfile(name="Inventaire rapide",modules=["icmp","arp","nmap","dns"],options={"nmap":{"profile":"fast"}}),ScanProfile(name="Inventaire standard",modules=["icmp","arp","nmap","dns"],options={"nmap":{"profile":"standard"}}),ScanProfile(name="Découverte passive",modules=["dns"],options={})])
+            db.add_all([ScanProfile(name="Inventaire rapide",modules=["icmp","arp","nmap","dns"],options={"nmap":{"profile":"fast"}}),ScanProfile(name="Inventaire standard",modules=["icmp","arp","nmap","dns"],options={"nmap":{"profile":"standard"}}),ScanProfile(name="Résolution DNS ciblée",modules=["dns"],options={})])
         if not await db.scalar(select(ScanProfile.id).where(ScanProfile.name == "Infrastructure SNMPv3")):
             db.add(ScanProfile(name="Infrastructure SNMPv3",modules=["nmap","snmp"],options={"nmap":{"profile":"fast"}}))
         if not await db.scalar(select(ScanProfile.id).where(ScanProfile.name == "Infrastructure SNMPv2c")):

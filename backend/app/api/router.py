@@ -15,24 +15,98 @@ import re
 import json
 import shutil
 import urllib.request
+import uuid
 import redis.asyncio as redis
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import exists, func, or_, select, update
+from sqlalchemy import delete, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.security import create_token, current_user, decode_token, hash_password, require, verify_password
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, IpRange, IpamAddress, IpamPrefix, NetworkDevice, NetworkIdentityBinding, PortMacEntry, RawObservation, ReportSchedule, Role, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf
-from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PasswordChange, PrefixCreate, PrefixUpdate, ReportEmail, ReportScheduleCreate, ReportScheduleUpdate, ScanCreate, ScanOut, ScanScheduleCreate, ScanScheduleUpdate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate
+from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, IpRange, IpamAddress, IpamPrefix, NetworkDevice, NetworkIdentityBinding, PassiveConnector, PassiveEventReceipt, PortMacEntry, RawObservation, ReportSchedule, Role, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf
+from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PassiveConnectorCreate, PassiveEventBatch, PasswordChange, PrefixCreate, PrefixUpdate, ReportEmail, ReportScheduleCreate, ReportScheduleUpdate, ScanCreate, ScanOut, ScanScheduleCreate, ScanScheduleUpdate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate
 from app.services.topology import ensure_asset_node, rebuild_inferred_topology
 from app.core.secrets import decrypt_secret, encrypt_secret
 from app.services.safety import validate_target
 from app.services.vendors import MOBILE_VENDORS,normalize_vendor
+from app.services.passive import authenticate_connector,issue_connector_token,validate_event_time
+from app.discovery.base import DiscoveryResult
+from app.correlation.engine import correlate
 
 router = APIRouter(prefix="/api/v1")
 
 def vrf_scope(column,vrf_id:str|None):return column.is_(None) if vrf_id is None else column==vrf_id
+
+@router.get("/passive-connectors")
+async def passive_connectors(db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin))):
+    rows=(await db.execute(select(PassiveConnector).order_by(PassiveConnector.name))).scalars().all()
+    return [{"id":x.id,"name":x.name,"kind":x.kind,"vrf_id":x.vrf_id,"enabled":x.enabled,"event_count":x.event_count,"last_seen_at":x.last_seen_at,"last_error":x.last_error,"created_at":x.created_at} for x in rows]
+
+@router.post("/passive-connectors")
+async def create_passive_connector(data:PassiveConnectorCreate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    if data.vrf_id and not await db.get(Vrf,data.vrf_id):raise HTTPException(404,"VRF introuvable")
+    if await db.scalar(select(PassiveConnector.id).where(func.lower(PassiveConnector.name)==data.name.strip().casefold())):raise HTTPException(409,"Un connecteur porte déjà ce nom")
+    connector_id=str(uuid.uuid4());token,digest=issue_connector_token(connector_id)
+    row=PassiveConnector(id=connector_id,name=data.name.strip(),kind=data.kind,vrf_id=data.vrf_id,token_hash=digest)
+    db.add(row);db.add(AuditLog(user_id=user.id,action="passive_connector_created",details={"id":row.id,"name":row.name,"kind":row.kind}));await db.commit()
+    return {"id":row.id,"name":row.name,"kind":row.kind,"token":token,"warning":"Copiez ce jeton maintenant : il ne sera plus affiché."}
+
+@router.patch("/passive-connectors/{connector_id}")
+async def toggle_passive_connector(connector_id:str,enabled:bool,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    row=await db.get(PassiveConnector,connector_id)
+    if not row:raise HTTPException(404,"Connecteur introuvable")
+    row.enabled=enabled;db.add(AuditLog(user_id=user.id,action="passive_connector_toggled",details={"id":row.id,"enabled":enabled}));await db.commit();return {"id":row.id,"enabled":row.enabled}
+
+@router.post("/passive-connectors/{connector_id}/rotate-token")
+async def rotate_passive_connector_token(connector_id:str,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    row=await db.get(PassiveConnector,connector_id)
+    if not row:raise HTTPException(404,"Connecteur introuvable")
+    token,row.token_hash=issue_connector_token(row.id);db.add(AuditLog(user_id=user.id,action="passive_connector_token_rotated",details={"id":row.id}));await db.commit()
+    return {"id":row.id,"token":token,"warning":"L'ancien jeton est révoqué. Copiez le nouveau maintenant."}
+
+@router.delete("/passive-connectors/{connector_id}")
+async def delete_passive_connector(connector_id:str,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    row=await db.get(PassiveConnector,connector_id)
+    if not row:raise HTTPException(404,"Connecteur introuvable")
+    await db.execute(delete(PassiveEventReceipt).where(PassiveEventReceipt.connector_id==connector_id));await db.delete(row);db.add(AuditLog(user_id=user.id,action="passive_connector_deleted",details={"id":connector_id,"name":row.name}));await db.commit();return {"deleted":True}
+
+@router.post("/passive-ingest")
+async def passive_ingest(data:PassiveEventBatch,x_connector_token:str|None=Header(default=None),db:AsyncSession=Depends(get_db)):
+    connector=await authenticate_connector(db,x_connector_token)
+    limiter=redis.from_url(settings.redis_url,decode_responses=True);rate_key=f"passive-ingest:{connector.id}"
+    try:
+        requests=await limiter.incr(rate_key)
+        if requests==1:await limiter.expire(rate_key,60)
+        if requests>120:raise HTTPException(429,"Débit d'ingestion dépassé",headers={"Retry-After":"60"})
+    except HTTPException:raise
+    except Exception:pass
+    finally:await limiter.aclose()
+    await db.execute(delete(PassiveEventReceipt).where(PassiveEventReceipt.connector_id==connector.id,PassiveEventReceipt.received_at<datetime.now(timezone.utc)-timedelta(days=30)))
+    event_ids=[event.event_id for event in data.events]
+    existing=set((await db.execute(select(PassiveEventReceipt.event_id).where(PassiveEventReceipt.connector_id==connector.id,PassiveEventReceipt.event_id.in_(event_ids)))).scalars())
+    accepted=0;duplicates=0;seen=set();normalized=[]
+    for event in data.events:
+        if event.event_id in existing or event.event_id in seen:duplicates+=1;continue
+        seen.add(event.event_id)
+        try:ip=str(ipaddress.ip_address(event.ip_address.strip()))
+        except ValueError as exc:
+            connector.last_error=f"Adresse IP invalide pour l'événement {event.event_id}";await db.commit()
+            raise HTTPException(422,connector.last_error) from exc
+        try:observed_at=validate_event_time(event.observed_at)
+        except HTTPException as exc:
+            connector.last_error=f"Événement {event.event_id}: {exc.detail}";await db.commit();raise HTTPException(exc.status_code,connector.last_error) from exc
+        normalized.append((event,ip,observed_at))
+    for event,ip,observed_at in normalized:
+        facts=[{"field":"ip","value":ip,"confidence":1.0}]
+        if observed_at>=datetime.now(timezone.utc)-timedelta(minutes=settings.asset_offline_minutes):facts.append({"field":"status","value":"online","confidence":0.85})
+        if event.mac_address:facts.append({"field":"mac","value":event.mac_address,"confidence":0.98})
+        if event.hostname:facts.append({"field":"hostname","value":event.hostname.strip(),"confidence":0.9})
+        result=DiscoveryResult(f"passive_{connector.kind}",ip,{"event_id":event.event_id,"connector_id":connector.id,"observed_at":observed_at.isoformat()},facts)
+        await correlate(db,result,vrf_id=connector.vrf_id,observed_at=observed_at)
+        db.add(PassiveEventReceipt(connector_id=connector.id,event_id=event.event_id,received_at=datetime.now(timezone.utc)));accepted+=1
+    connector.event_count+=accepted;connector.last_seen_at=datetime.now(timezone.utc);connector.last_error=None;await db.commit()
+    return {"accepted":accepted,"duplicates":duplicates,"connector_id":connector.id}
 
 
 @router.get("/system/monitoring")

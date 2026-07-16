@@ -93,6 +93,9 @@ export function Layout({
             <Link href="#/settings" icon={Settings} label="Paramètres" />
           )}
           {isAdmin(user) && (
+            <Link href="#/connectors" icon={Network} label="Connecteurs" />
+          )}
+          {isAdmin(user) && (
             <Link href="#/users" icon={Users} label="Utilisateurs" />
           )}
         </nav>

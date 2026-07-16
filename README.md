@@ -326,6 +326,14 @@ L'IPAM accepte les mêmes préfixes et adresses dans plusieurs VRF. Sélectionne
 
 Les profils **Audit approfondi TCP** et **Services UDP essentiels** complètent l'inventaire standard. Le profil UDP est volontairement limité aux 100 ports les plus courants et à 50 paquets/s. L'historique affiche le module actif, la progression et le nombre de résultats corrélés.
 
+La page **Connecteurs** permet à un administrateur de créer des sources passives DHCP, ARP, DNS ou génériques. Chaque source reçoit un jeton affiché une seule fois, révocable et renouvelable. Elle transmet jusqu'à 500 événements par requête à `POST /api/v1/passive-ingest` avec l'en-tête `X-Connector-Token`. Les identifiants d'événements rendent les renvois idempotents et les observations alimentent le même moteur de corrélation IP/MAC que les scans actifs.
+
+```json
+{"events":[{"event_id":"dhcp-2026-000123","ip_address":"192.168.1.42","mac_address":"00:11:22:33:44:55","hostname":"poste-42","observed_at":"2026-07-16T10:00:00Z"}]}
+```
+
+Une source est limitée à 120 requêtes par minute. Les reçus d'anti-rejeu sont conservés 30 jours et les événements datés de plus de 7 jours ou de plus de 5 minutes dans le futur sont refusés.
+
 ### La page ne s’ouvre pas
 
 ```bash

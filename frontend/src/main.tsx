@@ -33,6 +33,9 @@ const Datacenter = lazy(() =>
   Scans = lazy(() =>
     import("./pages/Scans").then((x) => ({ default: x.Scans })),
   ),
+  Connectors = lazy(() =>
+    import("./pages/Connectors").then((x) => ({ default: x.Connectors })),
+  ),
   Networks = lazy(() =>
     import("./pages/Networks").then((x) => ({ default: x.Networks })),
   ),
@@ -69,6 +72,7 @@ function App() {
   if (path === "/archives") return <Archives />;
   if (path === "/vendors") return <Vendors />;
   if (path === "/scans") return <Scans />;
+  if (path === "/connectors") return <Connectors />;
   if (path === "/networks") return <Networks />;
   if (path === "/topology") return <Topology />;
   return (

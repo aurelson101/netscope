@@ -33,6 +33,21 @@ class ScanCreate(BaseModel):
     confirm_large_network: bool = False
     confirm_public_network: bool = False
 
+class PassiveConnectorCreate(BaseModel):
+    name: str = Field(min_length=2,max_length=120)
+    kind: str = Field(pattern=r"^(dhcp|arp|dns|generic)$")
+    vrf_id: str | None = None
+
+class PassiveEvent(BaseModel):
+    event_id: str = Field(min_length=1,max_length=120)
+    ip_address: str
+    mac_address: str | None = None
+    hostname: str | None = Field(default=None,max_length=255)
+    observed_at: datetime | None = None
+
+class PassiveEventBatch(BaseModel):
+    events: list[PassiveEvent] = Field(min_length=1,max_length=500)
+
 class ScanScheduleCreate(BaseModel):
     name: str = Field(min_length=2,max_length=120)
     target: str
