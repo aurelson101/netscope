@@ -31,7 +31,11 @@ class SnmpPlugin(DiscoveryPlugin):
         sections={}
         for name,oid in OIDS.items():
             proc=await asyncio.create_subprocess_exec(*base,target,oid,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
-            stdout,stderr=await asyncio.wait_for(proc.communicate(),timeout=options.get("section_timeout",30))
+            try:stdout,stderr=await asyncio.wait_for(proc.communicate(),timeout=options.get("section_timeout",30))
+            except TimeoutError:
+                proc.kill();await proc.communicate()
+                if name=="system":raise RuntimeError("La collecte SNMP système a dépassé le délai autorisé") from None
+                sections[name]=[];continue
             sections[name]=parse_walk(stdout.decode(errors="replace"))
             if name=="system" and proc.returncode!=0: raise RuntimeError(stderr.decode(errors="replace")[:500])
         facts=[{"field":"ip","value":target,"confidence":1.0},{"field":"status","value":"online","confidence":1.0}]

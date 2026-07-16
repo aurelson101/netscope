@@ -16,6 +16,9 @@ export function Lab() {
     api<any[]>("/vlans").then(setVlans);
   }, []);
   const ports = devices.reduce((n, d) => n + (d.ports?.length || 0), 0);
+  const monitoredPorts = devices.flatMap((device) =>
+    (device.ports || []).filter((port: any) => port.metric).map((port: any) => ({...port,device:device.sys_name || device.management_ip || "Équipement"})),
+  ).sort((a: any,b: any) => Math.max(b.metric.in_utilization || 0,b.metric.out_utilization || 0)-Math.max(a.metric.in_utilization || 0,a.metric.out_utilization || 0));
   return (
     <Layout title="Infrastructure Lab">
       <div className="labIntro">
@@ -84,6 +87,11 @@ export function Lab() {
         </article>
       </div>
       <article className="panel tablePanel labTable">
+        <div className="labTableHead"><div><h3>Métriques d’interfaces SNMP</h3><p>Interfaces les plus utilisées lors de la dernière collecte.</p></div></div>
+        <table><thead><tr><th>Équipement</th><th>Interface</th><th>Entrant</th><th>Sortant</th><th>Utilisation max.</th><th>Erreurs</th></tr></thead><tbody>{monitoredPorts.slice(0,20).map((port:any)=><tr key={port.id}><td>{port.device}</td><td>{port.name || port.description || `ifIndex ${port.if_index}`}</td><td>{formatRate(port.metric.in_bps)}</td><td>{formatRate(port.metric.out_bps)}</td><td>{Math.max(port.metric.in_utilization || 0,port.metric.out_utilization || 0).toFixed(1)} %</td><td>{(port.metric.in_errors || 0)+(port.metric.out_errors || 0)}</td></tr>)}</tbody></table>
+        {!monitoredPorts.length && <p className="hint">Deux collectes SNMP sont nécessaires pour calculer les débits.</p>}
+      </article>
+      <article className="panel tablePanel labTable">
         <div className="labTableHead">
           <div>
             <h3>Équipements récents</h3>
@@ -124,3 +132,4 @@ export function Lab() {
     </Layout>
   );
 }
+function formatRate(value:number|null|undefined){if(value==null)return "—";if(value>=1e9)return `${(value/1e9).toFixed(2)} Gb/s`;if(value>=1e6)return `${(value/1e6).toFixed(2)} Mb/s`;if(value>=1e3)return `${(value/1e3).toFixed(1)} kb/s`;return `${value.toFixed(0)} b/s`}

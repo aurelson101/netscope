@@ -345,6 +345,8 @@ NETSCOPE_URL=https://netscope.example.com PROBE_TOKEN='jeton-affiché-une-fois' 
 
 La sonde publie un heartbeat, récupère une tâche à la fois et renvoie uniquement les observations appartenant au préfixe demandé. Les tâches abandonnées sont remises en file après 15 minutes. Les résultats sont limités à 5 Mo. ICMP, ARP, Nmap et DNS sont pris en charge ; les profils SNMP et leurs secrets restent exécutés par le scanner central.
 
+Les collectes SNMP enregistrent également les compteurs 64 bits, erreurs, vitesse et utilisation de chaque interface. Deux collectes sont nécessaires pour calculer les débits entrants/sortants ; les dernières valeurs apparaissent dans **Infrastructure Lab** et l'historique sur 90 jours est disponible par l'API `/switch-ports/{id}/metrics`. Une utilisation supérieure à 90 % sur deux collectes ouvre une alerte, résolue sous 80 %. Les voisins LLDP/CDP sont associés à leurs vrais index et noms de ports locaux/distants.
+
 ### La page ne s’ouvre pas
 
 ```bash

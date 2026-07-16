@@ -24,7 +24,7 @@ from sqlalchemy.orm import selectinload
 from app.core.security import create_token, current_user, decode_token, hash_password, require, verify_password
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, IpRange, IpamAddress, IpamPrefix, NetworkDevice, NetworkIdentityBinding, PassiveConnector, PassiveEventReceipt, PortMacEntry, Probe, RawObservation, ReportSchedule, Role, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf
+from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, InterfaceMetric, IpRange, IpamAddress, IpamPrefix, NetworkDevice, NetworkIdentityBinding, PassiveConnector, PassiveEventReceipt, PortMacEntry, Probe, RawObservation, ReportSchedule, Role, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf
 from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PassiveConnectorCreate, PassiveEventBatch, PasswordChange, PrefixCreate, PrefixUpdate, ProbeCreate, ProbeHeartbeat, ProbeTaskResult, ReportEmail, ReportScheduleCreate, ReportScheduleUpdate, ScanCreate, ScanOut, ScanScheduleCreate, ScanScheduleUpdate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate
 from app.services.topology import ensure_asset_node, rebuild_inferred_topology
 from app.core.secrets import decrypt_secret, encrypt_secret
@@ -717,7 +717,7 @@ async def create_topology_link(data:TopologyLinkCreate,db:AsyncSession=Depends(g
     if not source or not target:raise HTTPException(404,"Actif source ou destination introuvable")
     if source.id==target.id:raise HTTPException(422,"La source et la destination doivent être différentes")
     source_node=await ensure_asset_node(db,source);target_node=await ensure_asset_node(db,target)
-    existing=(await db.execute(select(TopologyLink).where(TopologyLink.source_node_id==source_node.id,TopologyLink.target_node_id==target_node.id,TopologyLink.source=="manual"))).scalar_one_or_none()
+    existing=(await db.execute(select(TopologyLink).where(TopologyLink.source_node_id==source_node.id,TopologyLink.target_node_id==target_node.id,TopologyLink.source=="manual",TopologyLink.source_port==data.source_port,TopologyLink.target_port==data.target_port))).scalar_one_or_none()
     if existing:raise HTTPException(409,"Cette relation manuelle existe déjà")
     row=TopologyLink(source_node_id=source_node.id,target_node_id=target_node.id,source_port=data.source_port,target_port=data.target_port,source="manual",confidence=1.0);db.add(row);db.add(AuditLog(user_id=user.id,action="topology_link_created",details={"source_asset_id":source.id,"target_asset_id":target.id,"description":data.description}));await db.commit();return {"id":row.id,"created":True}
 
@@ -743,8 +743,18 @@ async def network_devices(db: AsyncSession = Depends(get_db), _=Depends(current_
     devices=(await db.execute(select(NetworkDevice))).scalars().all();result=[]
     for device in devices:
         ports=(await db.execute(select(SwitchPort).where(SwitchPort.network_device_id==device.id))).scalars().all()
-        result.append({"id":device.id,"asset_id":device.asset_id,"management_ip":device.management_ip,"sys_name":device.sys_name,"sys_descr":device.sys_descr,"sys_object_id":device.sys_object_id,"last_polled":device.last_polled,"ports":[{"id":p.id,"if_index":p.if_index,"name":p.name,"description":p.description,"admin_status":p.admin_status,"oper_status":p.oper_status,"vlan_id":p.vlan_id} for p in ports]})
+        port_rows=[]
+        for p in ports:
+            metric=(await db.execute(select(InterfaceMetric).where(InterfaceMetric.switch_port_id==p.id).order_by(InterfaceMetric.collected_at.desc()).limit(1))).scalar_one_or_none()
+            port_rows.append({"id":p.id,"if_index":p.if_index,"name":p.name,"description":p.description,"admin_status":p.admin_status,"oper_status":p.oper_status,"vlan_id":p.vlan_id,"metric":{"collected_at":metric.collected_at,"speed_bps":metric.speed_bps,"in_bps":metric.in_bps,"out_bps":metric.out_bps,"in_utilization":metric.in_utilization,"out_utilization":metric.out_utilization,"in_errors":metric.in_errors,"out_errors":metric.out_errors} if metric else None})
+        result.append({"id":device.id,"asset_id":device.asset_id,"management_ip":device.management_ip,"sys_name":device.sys_name,"sys_descr":device.sys_descr,"sys_object_id":device.sys_object_id,"last_polled":device.last_polled,"ports":port_rows})
     return result
+
+@router.get("/switch-ports/{port_id}/metrics")
+async def port_metrics(port_id:str,hours:int=Query(24,ge=1,le=2160),limit:int=Query(500,ge=1,le=5000),db:AsyncSession=Depends(get_db),_=Depends(current_user)):
+    if not await db.get(SwitchPort,port_id):raise HTTPException(404,"Interface introuvable")
+    rows=(await db.execute(select(InterfaceMetric).where(InterfaceMetric.switch_port_id==port_id,InterfaceMetric.collected_at>=datetime.now(timezone.utc)-timedelta(hours=hours)).order_by(InterfaceMetric.collected_at.desc()).limit(limit))).scalars().all()
+    return [{"collected_at":x.collected_at,"speed_bps":x.speed_bps,"in_bps":x.in_bps,"out_bps":x.out_bps,"in_utilization":x.in_utilization,"out_utilization":x.out_utilization,"in_errors":x.in_errors,"out_errors":x.out_errors} for x in reversed(rows)]
 
 
 @router.get("/switch-ports/{port_id}/macs")

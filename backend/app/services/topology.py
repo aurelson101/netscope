@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Asset, IpamAddress, IpamPrefix, TopologyLink, TopologyNode
 
@@ -9,7 +9,10 @@ async def ensure_asset_node(db:AsyncSession,asset:Asset,address:str|None=None)->
     node=(await db.execute(select(TopologyNode).where(TopologyNode.asset_id==asset.id))).scalar_one_or_none()
     label=asset.hostname or address or asset.id
     if not node:
-        node=TopologyNode(asset_id=asset.id,label=label,kind=asset.device_type);db.add(node);await db.flush()
+        node=(await db.execute(select(TopologyNode).where(TopologyNode.asset_id.is_(None),func.lower(TopologyNode.label)==label.casefold()).limit(1))).scalar_one_or_none()
+        if node:node.asset_id=asset.id;node.kind=asset.device_type
+        else:node=TopologyNode(asset_id=asset.id,label=label,kind=asset.device_type);db.add(node)
+        await db.flush()
     else:node.label=label;node.kind=asset.device_type
     return node
 

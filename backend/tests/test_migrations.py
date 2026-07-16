@@ -8,7 +8,7 @@ def test_migrations_upgrade_and_downgrade(tmp_path,monkeypatch):
     config=Config(str(Path(__file__).parents[1]/"alembic.ini"));config.set_main_option("script_location",str(Path(__file__).parents[1]/"alembic"));config.set_main_option("sqlalchemy.url",f"sqlite:///{database}")
     command.upgrade(config,"head")
     tables=set(inspect(create_engine(f"sqlite:///{database}")).get_table_names())
-    assert {"users","user_sessions","scan_schedules","vrfs","dhcp_reservations","configuration_versions","passive_connectors","passive_event_receipts","probes"} <= tables
+    assert {"users","user_sessions","scan_schedules","vrfs","dhcp_reservations","configuration_versions","passive_connectors","passive_event_receipts","probes","interface_metrics"} <= tables
     inspector=inspect(create_engine(f"sqlite:///{database}"))
     assert {"vrf_id","parent_id"} <= {column["name"] for column in inspector.get_columns("ipam_prefixes")}
     for table in ("asset_addresses","ipam_addresses","scan_jobs","scan_schedules"):

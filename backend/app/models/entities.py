@@ -1,7 +1,7 @@
 import enum
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import JSON, BigInteger, Boolean, CheckConstraint, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -322,6 +322,23 @@ class SwitchPort(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class InterfaceMetric(Base):
+    __tablename__ = "interface_metrics"
+    __table_args__ = (Index("ix_interface_metrics_port_time","switch_port_id","collected_at"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    switch_port_id: Mapped[str] = mapped_column(ForeignKey("switch_ports.id"), index=True)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
+    speed_bps: Mapped[int | None] = mapped_column(BigInteger)
+    in_octets: Mapped[int | None] = mapped_column(BigInteger)
+    out_octets: Mapped[int | None] = mapped_column(BigInteger)
+    in_errors: Mapped[int | None] = mapped_column(BigInteger)
+    out_errors: Mapped[int | None] = mapped_column(BigInteger)
+    in_bps: Mapped[float | None] = mapped_column(Float)
+    out_bps: Mapped[float | None] = mapped_column(Float)
+    in_utilization: Mapped[float | None] = mapped_column(Float)
+    out_utilization: Mapped[float | None] = mapped_column(Float)
+
+
 class PortMacEntry(Base):
     __tablename__ = "port_mac_entries"
     __table_args__ = (UniqueConstraint("switch_port_id", "mac_address", "vlan_id"),)
@@ -356,7 +373,7 @@ class TopologyNode(Base):
 
 class TopologyLink(Base):
     __tablename__ = "topology_links"
-    __table_args__ = (UniqueConstraint("source_node_id", "target_node_id", "source"),)
+    __table_args__ = (UniqueConstraint("source_node_id","target_node_id","source","source_port","target_port",name="uq_topology_link_ports"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     source_node_id: Mapped[str] = mapped_column(ForeignKey("topology_nodes.id"))
     target_node_id: Mapped[str] = mapped_column(ForeignKey("topology_nodes.id"))
