@@ -62,11 +62,12 @@ async def init_db():
             if not await db.scalar(select(Subnet.id).where(Subnet.cidr==prefix.prefix)):
                 db.add(Subnet(cidr=prefix.prefix,name=prefix.name,state="authorized",site_id=prefix.site_id))
         for found in (await db.execute(select(AssetAddress))).scalars():
-            if await db.scalar(select(IpamAddress.id).where(IpamAddress.address==found.address)):continue
-            prefix=next((p for p in prefixes if ipaddress.ip_address(found.address) in ipaddress.ip_network(p.prefix)),None)
+            scope=IpamAddress.vrf_id.is_(None) if found.vrf_id is None else IpamAddress.vrf_id==found.vrf_id
+            if await db.scalar(select(IpamAddress.id).where(IpamAddress.address==found.address,scope)):continue
+            prefix=next((p for p in prefixes if p.vrf_id==found.vrf_id and ipaddress.ip_address(found.address) in ipaddress.ip_network(p.prefix)),None)
             if prefix:
                 asset=await db.get(Asset,found.asset_id)
-                db.add(IpamAddress(address=found.address,prefix_id=prefix.id,asset_id=found.asset_id,status="active",dns_name=asset.hostname if asset else None,source="discovery",last_seen=found.last_seen))
+                db.add(IpamAddress(address=found.address,prefix_id=prefix.id,vrf_id=found.vrf_id,asset_id=found.asset_id,status="active",dns_name=asset.hostname if asset else None,source="discovery",last_seen=found.last_seen))
         await db.commit()
     async with SessionLocal() as db:
         from app.services.topology import rebuild_inferred_topology

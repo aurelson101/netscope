@@ -1,7 +1,7 @@
 import enum
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -77,6 +77,7 @@ class ScanJob(Base):
     target: Mapped[str] = mapped_column(String(64))
     profile_id: Mapped[str] = mapped_column(ForeignKey("scan_profiles.id"))
     credential_id: Mapped[str | None] = mapped_column(ForeignKey("credentials.id"))
+    vrf_id: Mapped[str | None] = mapped_column(ForeignKey("vrfs.id"), index=True)
     status: Mapped[str] = mapped_column(String(24), default="queued")
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -92,6 +93,7 @@ class ScanSchedule(Base):
     target: Mapped[str] = mapped_column(String(64))
     profile_id: Mapped[str] = mapped_column(ForeignKey("scan_profiles.id"))
     credential_id: Mapped[str | None] = mapped_column(ForeignKey("credentials.id"))
+    vrf_id: Mapped[str | None] = mapped_column(ForeignKey("vrfs.id"), index=True)
     interval_minutes: Mapped[int] = mapped_column(Integer, default=1440)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -120,12 +122,28 @@ class Asset(Base):
 
 class AssetAddress(Base):
     __tablename__ = "asset_addresses"
-    __table_args__ = (UniqueConstraint("asset_id", "address"),)
+    __table_args__ = (
+        Index("uq_asset_addresses_global", "asset_id", "address", unique=True, sqlite_where=text("vrf_id IS NULL"), postgresql_where=text("vrf_id IS NULL")),
+        Index("uq_asset_addresses_vrf", "asset_id", "address", "vrf_id", unique=True, sqlite_where=text("vrf_id IS NOT NULL"), postgresql_where=text("vrf_id IS NOT NULL")),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id"))
     address: Mapped[str] = mapped_column(String(64), index=True)
+    vrf_id: Mapped[str | None] = mapped_column(ForeignKey("vrfs.id"), index=True)
     version: Mapped[int] = mapped_column(Integer, default=4)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class NetworkIdentityBinding(Base):
+    __tablename__ = "network_identity_bindings"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[str | None] = mapped_column(ForeignKey("assets.id"), index=True)
+    ip_address: Mapped[str] = mapped_column(String(64), index=True)
+    mac_address: Mapped[str | None] = mapped_column(String(32), index=True)
+    vrf_id: Mapped[str | None] = mapped_column(ForeignKey("vrfs.id"), index=True)
+    source: Mapped[str] = mapped_column(String(50))
+    scan_id: Mapped[str | None] = mapped_column(ForeignKey("scan_jobs.id"), index=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
 
 
 class AssetIdentifier(Base):
@@ -315,8 +333,12 @@ class DeviceRole(Base):
 
 class IpamPrefix(Base):
     __tablename__ = "ipam_prefixes"
+    __table_args__ = (
+        Index("uq_ipam_prefixes_global", "prefix", unique=True, sqlite_where=text("vrf_id IS NULL"), postgresql_where=text("vrf_id IS NULL")),
+        Index("uq_ipam_prefixes_vrf", "prefix", "vrf_id", unique=True, sqlite_where=text("vrf_id IS NOT NULL"), postgresql_where=text("vrf_id IS NOT NULL")),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    prefix: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    prefix: Mapped[str] = mapped_column(String(64), index=True)
     name: Mapped[str] = mapped_column(String(160))
     status: Mapped[str] = mapped_column(String(30), default="active")
     role: Mapped[str | None] = mapped_column(String(80))
@@ -332,9 +354,14 @@ class IpamPrefix(Base):
 
 class IpamAddress(Base):
     __tablename__ = "ipam_addresses"
+    __table_args__ = (
+        Index("uq_ipam_addresses_global", "address", unique=True, sqlite_where=text("vrf_id IS NULL"), postgresql_where=text("vrf_id IS NULL")),
+        Index("uq_ipam_addresses_vrf", "address", "vrf_id", unique=True, sqlite_where=text("vrf_id IS NOT NULL"), postgresql_where=text("vrf_id IS NOT NULL")),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    address: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    address: Mapped[str] = mapped_column(String(64), index=True)
     prefix_id: Mapped[str | None] = mapped_column(ForeignKey("ipam_prefixes.id"))
+    vrf_id: Mapped[str | None] = mapped_column(ForeignKey("vrfs.id"), index=True)
     asset_id: Mapped[str | None] = mapped_column(ForeignKey("assets.id"))
     status: Mapped[str] = mapped_column(String(30), default="active")
     role: Mapped[str | None] = mapped_column(String(80))

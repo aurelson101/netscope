@@ -8,6 +8,7 @@ export function Scans() {
   const [scans, setScans] = useState<any[]>([]),
     [profiles, setProfiles] = useState<any[]>([]),
     [credentials, setCredentials] = useState<any[]>([]),
+    [vrfs, setVrfs] = useState<any[]>([]),
     [schedules, setSchedules] = useState<any[]>([]),
     [diagnostic, setDiagnostic] = useState<any>(),
     [error, setError] = useState("");
@@ -24,6 +25,7 @@ export function Scans() {
     api<any[]>("/scan-schedules")
       .then(setSchedules)
       .catch((x) => setError(x.message));
+    api<any[]>("/ipam/vrfs").then(setVrfs).catch(() => setVrfs([]));
   };
   useEffect(load, []);
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -36,6 +38,7 @@ export function Scans() {
           target: f.get("target"),
           profile_id: f.get("profile_id"),
           credential_id: f.get("credential_id") || null,
+          vrf_id: f.get("vrf_id") || null,
         }),
       });
       setError("");
@@ -56,6 +59,7 @@ export function Scans() {
           target: f.get("target"),
           profile_id: f.get("profile_id"),
           credential_id: f.get("credential_id") || null,
+          vrf_id: f.get("vrf_id") || null,
           interval_minutes: Number(f.get("interval_minutes")),
           enabled: true,
         }),
@@ -128,7 +132,7 @@ export function Scans() {
           <h3>Nouveau scan</h3>
           {editable ? (
             <form onSubmit={submit}>
-              <TargetFields profiles={profiles} credentials={credentials} />
+              <TargetFields profiles={profiles} credentials={credentials} vrfs={vrfs} />
               <button className="primary">
                 <Play />
                 Lancer le scan
@@ -177,7 +181,7 @@ export function Scans() {
                 Nom
                 <input name="name" required />
               </label>
-              <TargetFields profiles={profiles} credentials={credentials} />
+              <TargetFields profiles={profiles} credentials={credentials} vrfs={vrfs} />
               <label>
                 Fréquence
                 <select name="interval_minutes" defaultValue="1440">
@@ -261,15 +265,24 @@ export function Scans() {
 function TargetFields({
   profiles,
   credentials,
+  vrfs,
 }: {
   profiles: any[];
   credentials: any[];
+  vrfs: any[];
 }) {
   return (
     <>
       <label>
         Cible
         <input name="target" placeholder="10.0.10.0/24" required />
+      </label>
+      <label>
+        VRF
+        <select name="vrf_id">
+          <option value="">Globale</option>
+          {vrfs.map((vrf) => <option value={vrf.id} key={vrf.id}>{vrf.name}</option>)}
+        </select>
       </label>
       <label>
         Profil

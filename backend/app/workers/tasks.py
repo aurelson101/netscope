@@ -64,11 +64,11 @@ async def _execute(job_id:str):
                 if module=="snmp" and not targets:raise ValueError("Aucun hôte actif découvert à interroger en SNMP")
                 if module=="dns" and "/" in job.target:
                     prefixes=(await db.execute(select(IpamPrefix))).scalars().all()
-                    matching=next((p for p in prefixes if p.prefix==job.target),None)
+                    matching=next((p for p in prefixes if p.prefix==job.target and p.vrf_id==job.vrf_id),None)
                     if matching and matching.dns_servers:options["servers"]=matching.dns_servers
                 for target in targets:
                     for result in await plugins[module].discover(target,options):
-                        discovered_targets.add(result.target);await correlate(db,result,job.id)
+                        discovered_targets.add(result.target);await correlate(db,result,job.id,job.vrf_id)
             job.status="completed"
         except Exception as exc:
             await db.rollback()
@@ -95,9 +95,10 @@ async def _dispatch_due():
     async with SessionLocal() as db:
         scans=(await db.execute(select(ScanSchedule).where(ScanSchedule.enabled.is_(True),ScanSchedule.next_run_at<=now))).scalars().all()
         for schedule in scans:
-            active=await db.scalar(select(ScanJob.id).where(ScanJob.target==schedule.target,ScanJob.status.in_(["queued","running"])).limit(1))
+            scope=ScanJob.vrf_id.is_(None) if schedule.vrf_id is None else ScanJob.vrf_id==schedule.vrf_id
+            active=await db.scalar(select(ScanJob.id).where(ScanJob.target==schedule.target,scope,ScanJob.status.in_(["queued","running"])).limit(1))
             if not active:
-                job=ScanJob(target=schedule.target,profile_id=schedule.profile_id,credential_id=schedule.credential_id,created_by=schedule.created_by);db.add(job);await db.flush();queued_scans.append((schedule.id,job.id))
+                job=ScanJob(target=schedule.target,profile_id=schedule.profile_id,credential_id=schedule.credential_id,vrf_id=schedule.vrf_id,created_by=schedule.created_by);db.add(job);await db.flush();queued_scans.append((schedule.id,job.id))
             schedule.last_run_at=now;schedule.next_run_at=now+timedelta(minutes=schedule.interval_minutes)
         reports=(await db.execute(select(ReportSchedule).where(ReportSchedule.enabled.is_(True),ReportSchedule.next_run_at<=now))).scalars().all()
         for schedule in reports:

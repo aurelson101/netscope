@@ -322,6 +322,8 @@ Les administrateurs disposent aussi d'un panneau **Paramètres → Supervision d
 
 Le menu **Alertes** conserve les nouveaux équipements, les équipements hors ligne et les scans en échec. Un actif réellement observé passe hors ligne après `ASSET_OFFLINE_MINUTES` (60 minutes par défaut) sans nouvelle observation ; les actifs créés uniquement à la main sont exclus de cette règle. Une nouvelle observation remet automatiquement l'actif en ligne et résout son alerte. Les alertes résolues sont conservées pendant `ALERT_RETENTION_DAYS` (90 jours par défaut).
 
+L'IPAM accepte les mêmes préfixes et adresses dans plusieurs VRF. Sélectionnez la VRF lors de la création du préfixe et lors du lancement ou de la planification d'un scan. La fiche d'un actif conserve l'historique des couples IP/MAC observés. Si une IP et une MAC pointent vers deux actifs différents, NetScope donne priorité à la MAC, ne déplace aucune association silencieusement et crée une alerte critique à examiner.
+
 ### La page ne s’ouvre pas
 
 ```bash

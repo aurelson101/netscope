@@ -9,10 +9,12 @@ export function Ipam() {
     administrative = isAdmin(user);
   const [prefixes, setPrefixes] = useState<any[]>([]),
     [addresses, setAddresses] = useState<any[]>([]),
+    [vrfs, setVrfs] = useState<any[]>([]),
     [error, setError] = useState("");
   const load = () => {
     api<any[]>("/ipam/prefixes").then(setPrefixes);
     api<any[]>("/ipam/addresses").then(setAddresses);
+    api<any[]>("/ipam/vrfs").then(setVrfs);
   };
   useEffect(load, []);
   async function addPrefix(e: FormEvent<HTMLFormElement>) {
@@ -27,6 +29,7 @@ export function Ipam() {
           name: f.get("name"),
           status: "active",
           role: f.get("role") || null,
+          vrf_id: f.get("vrf_id") || null,
         }),
       });
       setError("");
@@ -35,6 +38,11 @@ export function Ipam() {
     } catch (x: any) {
       setError(x.message);
     }
+  }
+  async function addVrf(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();const form=e.currentTarget,f=new FormData(form);
+    try {await api("/ipam/vrfs",{method:"POST",body:JSON.stringify({name:f.get("name"),route_distinguisher:f.get("route_distinguisher")||null,description:null})});form.reset();setError("");load();}
+    catch (x:any) {setError(x.message);}
   }
   async function removeAddress(a: any) {
     if (
@@ -94,6 +102,16 @@ export function Ipam() {
       <div className="split">
         {editable && (
           <article className="panel formPanel">
+            <h3><Plus /> Ajouter une VRF</h3>
+            <form onSubmit={addVrf}>
+              <label>Nom<input name="name" placeholder="Clients, Production…" required /></label>
+              <label>Route distinguisher<input name="route_distinguisher" placeholder="65000:100" /></label>
+              <button className="primary">Créer la VRF</button>
+            </form>
+          </article>
+        )}
+        {editable && (
+          <article className="panel formPanel">
             <h3>
               <Plus /> Ajouter un préfixe
             </h3>
@@ -105,6 +123,13 @@ export function Ipam() {
               <label>
                 Nom
                 <input name="name" placeholder="Utilisateurs Paris" required />
+              </label>
+              <label>
+                VRF
+                <select name="vrf_id">
+                  <option value="">Globale</option>
+                  {vrfs.map((vrf) => <option value={vrf.id} key={vrf.id}>{vrf.name}</option>)}
+                </select>
               </label>
               <label>
                 Rôle
@@ -125,6 +150,7 @@ export function Ipam() {
                 <th>Préfixe</th>
                 <th>Nom</th>
                 <th>Rôle</th>
+                <th>VRF</th>
                 <th>Utilisation</th>
                 <th>Statut</th>
                 {administrative && <th>Actions</th>}
@@ -136,6 +162,7 @@ export function Ipam() {
                   <td className="mono">{p.prefix}</td>
                   <td>{p.name}</td>
                   <td>{p.role || "—"}</td>
+                  <td>{vrfs.find((v) => v.id === p.vrf_id)?.name || "Globale"}</td>
                   <td>
                     <span className="confidence">
                       {p.used} / {p.used + p.available} · {p.utilization}%
@@ -172,6 +199,7 @@ export function Ipam() {
               <th>DNS</th>
               <th>Rôle</th>
               <th>Source</th>
+              <th>VRF</th>
               <th>Statut</th>
               <th>Dernière observation</th>
               {editable && <th>Actions</th>}
@@ -191,6 +219,7 @@ export function Ipam() {
                 <td>
                   <span className="tag">{a.source}</span>
                 </td>
+                <td>{vrfs.find((v) => v.id === a.vrf_id)?.name || "Globale"}</td>
                 <td>
                   <span className={"dot " + a.status}></span>
                   {a.status}

@@ -29,6 +29,7 @@ class ScanCreate(BaseModel):
     target: str
     profile_id: str
     credential_id: str | None = None
+    vrf_id: str | None = None
     confirm_large_network: bool = False
     confirm_public_network: bool = False
 
@@ -37,6 +38,7 @@ class ScanScheduleCreate(BaseModel):
     target: str
     profile_id: str
     credential_id: str | None = None
+    vrf_id: str | None = None
     interval_minutes: int = Field(ge=5,le=525600)
     enabled: bool = True
 
@@ -45,6 +47,7 @@ class ScanScheduleUpdate(BaseModel):
     target: str | None = None
     profile_id: str | None = None
     credential_id: str | None = None
+    vrf_id: str | None = None
     interval_minutes: int | None = Field(default=None,ge=5,le=525600)
     enabled: bool | None = None
 
@@ -68,6 +71,7 @@ class ScanOut(BaseModel):
     id: str
     target: str
     profile_id: str
+    vrf_id: str | None
     status: str
     created_at: datetime
     started_at: datetime | None
@@ -79,6 +83,7 @@ class ScanOut(BaseModel):
 class AddressOut(BaseModel):
     address: str
     version: int
+    vrf_id: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -213,6 +218,7 @@ class ConfigurationSnapshotCreate(BaseModel):
 class IpAddressCreate(BaseModel):
     address: str
     prefix_id: str | None = None
+    vrf_id: str | None = None
     asset_id: str | None = None
     status: str = "active"
     role: str | None = None

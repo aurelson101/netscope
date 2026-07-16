@@ -23,7 +23,7 @@ from sqlalchemy.orm import selectinload
 from app.core.security import create_token, current_user, decode_token, hash_password, require, verify_password
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, IpRange, IpamAddress, IpamPrefix, NetworkDevice, PortMacEntry, RawObservation, ReportSchedule, Role, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf
+from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, IpRange, IpamAddress, IpamPrefix, NetworkDevice, NetworkIdentityBinding, PortMacEntry, RawObservation, ReportSchedule, Role, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf
 from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PasswordChange, PrefixCreate, PrefixUpdate, ReportEmail, ReportScheduleCreate, ReportScheduleUpdate, ScanCreate, ScanOut, ScanScheduleCreate, ScanScheduleUpdate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate
 from app.services.topology import ensure_asset_node, rebuild_inferred_topology
 from app.core.secrets import decrypt_secret, encrypt_secret
@@ -31,6 +31,8 @@ from app.services.safety import validate_target
 from app.services.vendors import MOBILE_VENDORS,normalize_vendor
 
 router = APIRouter(prefix="/api/v1")
+
+def vrf_scope(column,vrf_id:str|None):return column.is_(None) if vrf_id is None else column==vrf_id
 
 
 @router.get("/system/monitoring")
@@ -251,12 +253,12 @@ async def asset(asset_id: str, db: AsyncSession = Depends(get_db), _=Depends(cur
 async def create_manual_asset(data:ManualAssetCreate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
     try:address=str(ipaddress.ip_address(data.ip_address))
     except ValueError as exc:raise HTTPException(422,"Adresse IP invalide") from exc
-    if await db.scalar(select(AssetAddress.id).where(AssetAddress.address==address)):raise HTTPException(409,"Cette adresse est déjà associée à un actif")
+    if await db.scalar(select(AssetAddress.id).where(AssetAddress.address==address,AssetAddress.vrf_id.is_(None))):raise HTTPException(409,"Cette adresse est déjà associée à un actif dans la VRF globale")
     mac=data.mac_address.upper() if data.mac_address else None
     if mac and await db.scalar(select(AssetIdentifier.id).where(AssetIdentifier.kind=="mac",AssetIdentifier.value==mac)):raise HTTPException(409,"Cette MAC est déjà associée à un actif")
-    asset=Asset(status=AssetStatus.unknown,hostname=data.hostname,manufacturer=normalize_vendor(data.manufacturer),model=data.model,device_type=data.device_type,operating_system=data.operating_system,confidence=1.0);db.add(asset);await db.flush();db.add(AssetAddress(asset_id=asset.id,address=address,version=6 if ":" in address else 4))
-    prefix=next((p for p in (await db.execute(select(IpamPrefix))).scalars() if ipaddress.ip_address(address) in ipaddress.ip_network(p.prefix)),None)
-    ipam_row=(await db.execute(select(IpamAddress).where(IpamAddress.address==address))).scalar_one_or_none()
+    asset=Asset(status=AssetStatus.unknown,hostname=data.hostname,manufacturer=normalize_vendor(data.manufacturer),model=data.model,device_type=data.device_type,operating_system=data.operating_system,confidence=1.0);db.add(asset);await db.flush();db.add(AssetAddress(asset_id=asset.id,address=address,vrf_id=None,version=6 if ":" in address else 4))
+    prefix=next((p for p in (await db.execute(select(IpamPrefix).where(IpamPrefix.vrf_id.is_(None)))).scalars() if ipaddress.ip_address(address) in ipaddress.ip_network(p.prefix)),None)
+    ipam_row=(await db.execute(select(IpamAddress).where(IpamAddress.address==address,IpamAddress.vrf_id.is_(None)))).scalar_one_or_none()
     if ipam_row:ipam_row.asset_id=asset.id;ipam_row.prefix_id=ipam_row.prefix_id or (prefix.id if prefix else None);ipam_row.dns_name=data.hostname or ipam_row.dns_name;ipam_row.status="active"
     else:db.add(IpamAddress(address=address,prefix_id=prefix.id if prefix else None,asset_id=asset.id,status="active",dns_name=data.hostname,source="manual",last_seen=datetime.now(timezone.utc)))
     if mac:db.add(AssetIdentifier(asset_id=asset.id,kind="mac",value=mac,confidence=1.0))
@@ -298,6 +300,13 @@ async def evidence(asset_id: str, db: AsyncSession = Depends(get_db), _=Depends(
 @router.get("/assets/{asset_id}/history")
 async def history(asset_id: str, db: AsyncSession = Depends(get_db), _=Depends(current_user)):
     return (await db.execute(select(AssetHistory).where(AssetHistory.asset_id == asset_id).order_by(AssetHistory.created_at.desc()))).scalars().all()
+
+
+@router.get("/assets/{asset_id}/identity-history")
+async def asset_identity_history(asset_id:str,limit:int=Query(200,ge=1,le=1000),db:AsyncSession=Depends(get_db),_=Depends(current_user)):
+    if not await db.get(Asset,asset_id):raise HTTPException(404,"Actif introuvable")
+    rows=(await db.execute(select(NetworkIdentityBinding).where(NetworkIdentityBinding.asset_id==asset_id).order_by(NetworkIdentityBinding.observed_at.desc()).limit(limit))).scalars().all()
+    return [{"id":x.id,"ip_address":x.ip_address,"mac_address":x.mac_address,"vrf_id":x.vrf_id,"source":x.source,"scan_id":x.scan_id,"observed_at":x.observed_at} for x in rows]
 
 
 @router.get("/assets/{asset_id}/raw-observations")
@@ -370,7 +379,7 @@ async def create_network(data: SubnetCreate, db: AsyncSession = Depends(get_db),
 async def delete_network(network_id:str,purge_ipam:bool=False,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
     row=await db.get(Subnet,network_id)
     if not row:raise HTTPException(404,"Réseau introuvable")
-    prefix=(await db.execute(select(IpamPrefix).where(IpamPrefix.prefix==row.cidr))).scalar_one_or_none()
+    prefix=(await db.execute(select(IpamPrefix).where(IpamPrefix.prefix==row.cidr,IpamPrefix.vrf_id.is_(None)))).scalar_one_or_none()
     address_count=0
     if prefix:
         address_count=await db.scalar(select(func.count()).select_from(IpamAddress).where(IpamAddress.prefix_id==prefix.id)) or 0
@@ -399,11 +408,12 @@ async def create_scan(data: ScanCreate, db: AsyncSession = Depends(get_db), user
     target = validate_target(data.target, data.confirm_large_network, data.confirm_public_network)
     profile = await db.get(ScanProfile, data.profile_id)
     if not profile: raise HTTPException(404, "Profil introuvable")
-    active = await db.scalar(select(func.count()).select_from(ScanJob).where(ScanJob.target == target, ScanJob.status.in_(["queued","running"])))
+    if data.vrf_id and not await db.get(Vrf,data.vrf_id):raise HTTPException(404,"VRF introuvable")
+    active = await db.scalar(select(func.count()).select_from(ScanJob).where(ScanJob.target == target,vrf_scope(ScanJob.vrf_id,data.vrf_id),ScanJob.status.in_(["queued","running"])))
     if active: raise HTTPException(409, "Un scan de cette cible est déjà actif")
     if "snmp" in profile.modules and not data.credential_id and not settings.snmp_default_credential:raise HTTPException(422,"Un identifiant SNMP est requis ou configurez un défaut dans .env")
     if data.credential_id and not await db.get(Credential,data.credential_id):raise HTTPException(404,"Identifiant SNMP introuvable")
-    row = ScanJob(target=target, profile_id=profile.id, credential_id=data.credential_id, created_by=user.id); db.add(row); db.add(AuditLog(user_id=user.id, action="scan_created", details={"target":target})); await db.commit(); await db.refresh(row)
+    row = ScanJob(target=target, profile_id=profile.id, credential_id=data.credential_id,vrf_id=data.vrf_id, created_by=user.id); db.add(row); db.add(AuditLog(user_id=user.id, action="scan_created", details={"target":target,"vrf_id":data.vrf_id})); await db.commit(); await db.refresh(row)
     try:
         from app.workers.tasks import execute_scan
         execute_scan.apply_async(args=[row.id],queue="scanner",retry=False)
@@ -435,6 +445,7 @@ async def scan_schedules(db:AsyncSession=Depends(get_db),_=Depends(current_user)
 async def create_scan_schedule(data:ScanScheduleCreate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
     target=validate_target(data.target,confirm_large=True,confirm_public=False)
     if not await db.get(ScanProfile,data.profile_id):raise HTTPException(404,"Profil introuvable")
+    if data.vrf_id and not await db.get(Vrf,data.vrf_id):raise HTTPException(404,"VRF introuvable")
     row=ScanSchedule(**data.model_dump(exclude={"target"}),target=target,created_by=user.id,next_run_at=datetime.now(timezone.utc)+timedelta(minutes=data.interval_minutes));db.add(row);db.add(AuditLog(user_id=user.id,action="scan_schedule_created",details={"name":row.name}));await db.commit();await db.refresh(row);return row
 
 @router.patch("/scan-schedules/{schedule_id}")
@@ -445,6 +456,7 @@ async def update_scan_schedule(schedule_id:str,data:ScanScheduleUpdate,db:AsyncS
     if "target" in values:values["target"]=validate_target(values["target"],confirm_large=True,confirm_public=False)
     if values.get("profile_id") and not await db.get(ScanProfile,values["profile_id"]):raise HTTPException(404,"Profil introuvable")
     if values.get("credential_id") and not await db.get(Credential,values["credential_id"]):raise HTTPException(404,"Identifiant SNMP introuvable")
+    if values.get("vrf_id") and not await db.get(Vrf,values["vrf_id"]):raise HTTPException(404,"VRF introuvable")
     for field,value in values.items():setattr(row,field,value)
     if "interval_minutes" in values or values.get("enabled") is True:row.next_run_at=datetime.now(timezone.utc)+timedelta(minutes=row.interval_minutes)
     db.add(AuditLog(user_id=user.id,action="scan_schedule_updated",details={"id":row.id,"fields":list(values)}));await db.commit();return row
@@ -506,9 +518,9 @@ async def create_datacenter_equipment(data:DatacenterDeviceCreate,db:AsyncSessio
     try:address=str(ipaddress.ip_address(data.ip_address))
     except ValueError as exc:raise HTTPException(422,"Adresse IP invalide") from exc
     if ipaddress.ip_address(address) not in ipaddress.ip_network(prefix.prefix):raise HTTPException(422,f"L'adresse doit appartenir au réseau {prefix.prefix}")
-    if await db.scalar(select(IpamAddress.id).where(IpamAddress.address==address)):raise HTTPException(409,"Cette adresse IP est déjà utilisée")
+    if await db.scalar(select(IpamAddress.id).where(IpamAddress.address==address,vrf_scope(IpamAddress.vrf_id,prefix.vrf_id))):raise HTTPException(409,"Cette adresse IP est déjà utilisée dans cette VRF")
     asset=Asset(status=AssetStatus.unknown,hostname=data.hostname,manufacturer=normalize_vendor(data.manufacturer),model=data.model,device_type=data.device_type,operating_system=data.operating_system,site_id=data.site_id,confidence=1);db.add(asset);await db.flush()
-    db.add(AssetAddress(asset_id=asset.id,address=address,version=6 if ":" in address else 4));db.add(IpamAddress(address=address,prefix_id=prefix.id,asset_id=asset.id,status="active",dns_name=data.hostname,description=data.description,role="datacenter",source="manual"));db.add(AssetMetadata(asset_id=asset.id,notes=data.description,role="datacenter"))
+    db.add(AssetAddress(asset_id=asset.id,address=address,vrf_id=prefix.vrf_id,version=6 if ":" in address else 4));db.add(IpamAddress(address=address,prefix_id=prefix.id,vrf_id=prefix.vrf_id,asset_id=asset.id,status="active",dns_name=data.hostname,description=data.description,role="datacenter",source="manual"));db.add(AssetMetadata(asset_id=asset.id,notes=data.description,role="datacenter"))
     for service in data.services:db.add(AssetService(asset_id=asset.id,protocol=service.protocol,port=service.port,name=service.name))
     db.add(AuditLog(user_id=user.id,action="datacenter_equipment_created",details={"asset_id":asset.id,"site_id":data.site_id,"vlan_id":vlan.vlan_id,"address":address}));await db.commit()
     return await db.scalar(select(Asset).options(selectinload(Asset.addresses),selectinload(Asset.identifiers),selectinload(Asset.services)).where(Asset.id==asset.id))
@@ -612,22 +624,23 @@ async def ipam_prefixes(db:AsyncSession=Depends(get_db),_=Depends(current_user))
 async def create_prefix(data:PrefixCreate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
     try:prefix=str(ipaddress.ip_network(data.prefix,strict=False))
     except ValueError as exc:raise HTTPException(422,"Préfixe invalide") from exc
-    existing=await db.scalar(select(IpamPrefix.id).where(IpamPrefix.prefix==prefix))
+    existing=await db.scalar(select(IpamPrefix.id).where(IpamPrefix.prefix==prefix,vrf_scope(IpamPrefix.vrf_id,data.vrf_id)))
     if existing:raise HTTPException(409,"Ce préfixe existe déjà. Modifiez sa configuration DNS dans la liste.")
     if data.vrf_id and not await db.get(Vrf,data.vrf_id):raise HTTPException(404,"VRF introuvable")
     if data.parent_id:
         parent=await db.get(IpamPrefix,data.parent_id)
         if not parent:raise HTTPException(404,"Préfixe parent introuvable")
+        if parent.vrf_id!=data.vrf_id:raise HTTPException(422,"Le préfixe parent doit appartenir à la même VRF")
         if not ipaddress.ip_network(prefix).subnet_of(ipaddress.ip_network(parent.prefix)) or prefix==parent.prefix:raise HTTPException(422,"Le préfixe doit être un sous-réseau strict du parent")
     if data.gateway and ipaddress.ip_address(data.gateway) not in ipaddress.ip_network(prefix):raise HTTPException(422,"La passerelle doit appartenir au préfixe")
     row=IpamPrefix(**data.model_dump(exclude={"prefix"}),prefix=prefix);db.add(row);await db.flush()
-    if not await db.scalar(select(Subnet.id).where(Subnet.cidr==prefix)):db.add(Subnet(cidr=prefix,name=data.name,state="authorized",site_id=data.site_id))
+    if data.vrf_id is None and not await db.scalar(select(Subnet.id).where(Subnet.cidr==prefix)):db.add(Subnet(cidr=prefix,name=data.name,state="authorized",site_id=data.site_id))
     network=ipaddress.ip_network(prefix)
-    for found in (await db.execute(select(AssetAddress))).scalars():
+    for found in (await db.execute(select(AssetAddress).where(vrf_scope(AssetAddress.vrf_id,data.vrf_id)))).scalars():
         if ipaddress.ip_address(found.address) in network:
             asset=await db.get(Asset,found.asset_id)
-            exists=await db.scalar(select(IpamAddress.id).where(IpamAddress.address==found.address))
-            if not exists:db.add(IpamAddress(address=found.address,prefix_id=row.id,asset_id=found.asset_id,status="active",dns_name=asset.hostname if asset else None,source="discovery",last_seen=found.last_seen))
+            exists=await db.scalar(select(IpamAddress.id).where(IpamAddress.address==found.address,vrf_scope(IpamAddress.vrf_id,data.vrf_id)))
+            if not exists:db.add(IpamAddress(address=found.address,prefix_id=row.id,vrf_id=data.vrf_id,asset_id=found.asset_id,status="active",dns_name=asset.hostname if asset else None,source="discovery",last_seen=found.last_seen))
     db.add(AuditLog(user_id=user.id,action="ipam_prefix_created",details={"prefix":prefix}));await db.commit();await db.refresh(row);return {"id":row.id,"prefix":row.prefix,"name":row.name,"status":row.status}
 
 
@@ -649,7 +662,7 @@ async def delete_prefix(prefix_id:str,db:AsyncSession=Depends(get_db),user:User=
     if not row:raise HTTPException(404,"Préfixe introuvable")
     count=await db.scalar(select(func.count()).select_from(IpamAddress).where(IpamAddress.prefix_id==prefix_id)) or 0
     if count:raise HTTPException(409,f"Ce préfixe contient {count} adresse(s). Supprimez ou déplacez-les d'abord.")
-    subnet=(await db.execute(select(Subnet).where(Subnet.cidr==row.prefix))).scalar_one_or_none()
+    subnet=(await db.execute(select(Subnet).where(Subnet.cidr==row.prefix))).scalar_one_or_none() if row.vrf_id is None else None
     if subnet:await db.delete(subnet)
     prefix=row.prefix;await db.delete(row);db.add(AuditLog(user_id=user.id,action="ipam_prefix_deleted",details={"prefix":prefix}));await db.commit();return {"deleted":True}
 
@@ -669,12 +682,13 @@ async def test_dns(data:DnsTest,_=Depends(require(Role.admin,Role.operator))):
 
 
 @router.get("/ipam/addresses")
-async def ipam_addresses(prefix_id:str|None=None,search:str|None=None,db:AsyncSession=Depends(get_db),_=Depends(current_user)):
+async def ipam_addresses(prefix_id:str|None=None,vrf_id:str|None=None,search:str|None=None,db:AsyncSession=Depends(get_db),_=Depends(current_user)):
     q=select(IpamAddress).order_by(IpamAddress.address)
     if prefix_id:q=q.where(IpamAddress.prefix_id==prefix_id)
+    if vrf_id:q=q.where(vrf_scope(IpamAddress.vrf_id,None if vrf_id=="global" else vrf_id))
     if search:q=q.where(or_(IpamAddress.address.ilike(f"%{search}%"),IpamAddress.dns_name.ilike(f"%{search}%")))
     rows=(await db.execute(q.limit(1000))).scalars().all()
-    return [{"id":x.id,"address":x.address,"prefix_id":x.prefix_id,"asset_id":x.asset_id,"status":x.status,"role":x.role,"dns_name":x.dns_name,"description":x.description,"source":x.source,"last_seen":x.last_seen} for x in rows]
+    return [{"id":x.id,"address":x.address,"prefix_id":x.prefix_id,"vrf_id":x.vrf_id,"asset_id":x.asset_id,"status":x.status,"role":x.role,"dns_name":x.dns_name,"description":x.description,"source":x.source,"last_seen":x.last_seen} for x in rows]
 
 
 @router.post("/ipam/addresses")
@@ -686,6 +700,10 @@ async def create_ip_address(data:IpAddressCreate,db:AsyncSession=Depends(get_db)
         prefix=await db.get(IpamPrefix,prefix_id)
         if not prefix:raise HTTPException(404,"Préfixe introuvable")
         if ipaddress.ip_address(address) not in ipaddress.ip_network(prefix.prefix):raise HTTPException(422,"Adresse hors du préfixe")
+        if data.vrf_id not in (None,prefix.vrf_id):raise HTTPException(422,"La VRF de l'adresse doit correspondre au préfixe")
+        data.vrf_id=prefix.vrf_id
+    if data.vrf_id and not await db.get(Vrf,data.vrf_id):raise HTTPException(404,"VRF introuvable")
+    if await db.scalar(select(IpamAddress.id).where(IpamAddress.address==address,vrf_scope(IpamAddress.vrf_id,data.vrf_id))):raise HTTPException(409,"Cette adresse existe déjà dans cette VRF")
     row=IpamAddress(**data.model_dump(exclude={"address"}),address=address,source="manual");db.add(row);db.add(AuditLog(user_id=user.id,action="ipam_address_created",details={"address":address}));await db.commit();await db.refresh(row);return {"id":row.id,"address":row.address,"status":row.status}
 
 
@@ -728,8 +746,8 @@ async def create_dhcp_reservation(data:DhcpReservationCreate,db:AsyncSession=Dep
     except ValueError as exc:raise HTTPException(422,"Adresse IP invalide") from exc
     if ipaddress.ip_address(address) not in ipaddress.ip_network(prefix.prefix):raise HTTPException(422,"Adresse hors du préfixe")
     row=DhcpReservation(**data.model_dump(exclude={"address","mac_address"}),address=address,mac_address=data.mac_address.upper());db.add(row)
-    existing=await db.scalar(select(IpamAddress.id).where(IpamAddress.address==address))
-    if not existing:db.add(IpamAddress(address=address,prefix_id=prefix.id,status="reserved",dns_name=data.hostname,description=data.description,source="dhcp"))
+    existing=await db.scalar(select(IpamAddress.id).where(IpamAddress.address==address,vrf_scope(IpamAddress.vrf_id,prefix.vrf_id)))
+    if not existing:db.add(IpamAddress(address=address,prefix_id=prefix.id,vrf_id=prefix.vrf_id,status="reserved",dns_name=data.hostname,description=data.description,source="dhcp"))
     db.add(AuditLog(user_id=user.id,action="dhcp_reservation_created",details={"address":address}));await db.commit();await db.refresh(row);return row
 
 @router.delete("/ipam/ranges/{row_id}")
@@ -742,7 +760,7 @@ async def delete_ip_range(row_id:str,db:AsyncSession=Depends(get_db),_=Depends(r
 async def delete_reservation(row_id:str,db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin,Role.operator))):
     row=await db.get(DhcpReservation,row_id)
     if not row:raise HTTPException(404,"Réservation introuvable")
-    address=await db.scalar(select(IpamAddress).where(IpamAddress.address==row.address,IpamAddress.source=="dhcp"))
+    address=await db.scalar(select(IpamAddress).where(IpamAddress.address==row.address,IpamAddress.prefix_id==row.prefix_id,IpamAddress.source=="dhcp"))
     if address:await db.delete(address)
     await db.delete(row);await db.commit();return {"deleted":True}
 

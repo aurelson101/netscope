@@ -19,7 +19,7 @@ def main():
     assets=values["/assets"]
     if assets:
         asset_id=assets[0]["id"]
-        for suffix in ("","/evidence","/history","/metadata","/raw-observations"):request(f"/assets/{asset_id}{suffix}")
+        for suffix in ("","/evidence","/history","/identity-history","/metadata","/raw-observations"):request(f"/assets/{asset_id}{suffix}")
     prefixes=values["/ipam/prefixes"]
     dns_prefix=next((x for x in prefixes if x.get("dns_servers")),None)
     if dns_prefix and assets:

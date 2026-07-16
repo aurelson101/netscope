@@ -9,7 +9,10 @@ def test_migrations_upgrade_and_downgrade(tmp_path,monkeypatch):
     command.upgrade(config,"head")
     tables=set(inspect(create_engine(f"sqlite:///{database}")).get_table_names())
     assert {"users","user_sessions","scan_schedules","vrfs","dhcp_reservations","configuration_versions"} <= tables
-    assert {"vrf_id","parent_id"} <= {column["name"] for column in inspect(create_engine(f"sqlite:///{database}")).get_columns("ipam_prefixes")}
+    inspector=inspect(create_engine(f"sqlite:///{database}"))
+    assert {"vrf_id","parent_id"} <= {column["name"] for column in inspector.get_columns("ipam_prefixes")}
+    for table in ("asset_addresses","ipam_addresses","scan_jobs","scan_schedules"):
+        assert "vrf_id" in {column["name"] for column in inspector.get_columns(table)}
     command.downgrade(config,"base")
     assert "users" not in inspect(create_engine(f"sqlite:///{database}")).get_table_names()
 

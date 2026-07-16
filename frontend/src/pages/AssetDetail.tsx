@@ -9,6 +9,7 @@ export function AssetDetail({ id }: { id: string }) {
     [tab, setTab] = useState("overview"),
     [evidence, setEvidence] = useState<any[]>([]),
     [history, setHistory] = useState<any[]>([]),
+    [identities, setIdentities] = useState<any[]>([]),
     [raw, setRaw] = useState<any[]>([]),
     [error, setError] = useState("");
   useEffect(() => {
@@ -21,6 +22,9 @@ export function AssetDetail({ id }: { id: string }) {
     api<any[]>("/assets/" + id + "/history")
       .then(setHistory)
       .catch(() => setHistory([]));
+    api<any[]>("/assets/" + id + "/identity-history")
+      .then(setIdentities)
+      .catch(() => setIdentities([]));
     api<any[]>("/assets/" + id + "/raw-observations")
       .then(setRaw)
       .catch(() => setRaw([]));
@@ -122,6 +126,17 @@ export function AssetDetail({ id }: { id: string }) {
                 <span>{x.kind}</span>
               </div>
             ))}
+          </div>
+          <h4>Historique IP/MAC observé</h4>
+          <div className="rows">
+            {identities.slice(0, 20).map((x) => (
+              <div key={x.id}>
+                <Network />
+                <b>{x.ip_address}{x.mac_address ? ` · ${x.mac_address}` : ""}</b>
+                <span>{x.source} · VRF {x.vrf_id || "globale"} · {new Date(x.observed_at).toLocaleString("fr")}</span>
+              </div>
+            ))}
+            {!identities.length && <p className="hint">Aucune association observée.</p>}
           </div>
         </Card>
       )}
