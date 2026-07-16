@@ -13,6 +13,7 @@ def test_migrations_upgrade_and_downgrade(tmp_path,monkeypatch):
     assert {"vrf_id","parent_id"} <= {column["name"] for column in inspector.get_columns("ipam_prefixes")}
     for table in ("asset_addresses","ipam_addresses","scan_jobs","scan_schedules"):
         assert "vrf_id" in {column["name"] for column in inspector.get_columns(table)}
+    assert {"progress","current_module","result_count"} <= {column["name"] for column in inspector.get_columns("scan_jobs")}
     command.downgrade(config,"base")
     assert "users" not in inspect(create_engine(f"sqlite:///{database}")).get_table_names()
 

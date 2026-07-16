@@ -73,6 +73,9 @@ class ScanOut(BaseModel):
     profile_id: str
     vrf_id: str | None
     status: str
+    progress: int
+    current_module: str | None
+    result_count: int
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None

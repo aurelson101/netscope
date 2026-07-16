@@ -27,7 +27,11 @@ export function Scans() {
       .catch((x) => setError(x.message));
     api<any[]>("/ipam/vrfs").then(setVrfs).catch(() => setVrfs([]));
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    const timer = window.setInterval(load, 5000);
+    return () => window.clearInterval(timer);
+  }, []);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -154,6 +158,8 @@ export function Scans() {
                   <b>{s.target}</b>
                   <small>
                     {new Date(s.created_at).toLocaleString("fr")}
+                    {s.status === "running" ? ` · ${s.current_module || "préparation"} · ${s.progress}%` : ""}
+                    {s.result_count ? ` · ${s.result_count} résultat(s)` : ""}
                     {s.error ? " · " + s.error : ""}
                   </small>
                 </span>

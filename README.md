@@ -324,6 +324,8 @@ Le menu **Alertes** conserve les nouveaux équipements, les équipements hors li
 
 L'IPAM accepte les mêmes préfixes et adresses dans plusieurs VRF. Sélectionnez la VRF lors de la création du préfixe et lors du lancement ou de la planification d'un scan. La fiche d'un actif conserve l'historique des couples IP/MAC observés. Si une IP et une MAC pointent vers deux actifs différents, NetScope donne priorité à la MAC, ne déplace aucune association silencieusement et crée une alerte critique à examiner.
 
+Les profils **Audit approfondi TCP** et **Services UDP essentiels** complètent l'inventaire standard. Le profil UDP est volontairement limité aux 100 ports les plus courants et à 50 paquets/s. L'historique affiche le module actif, la progression et le nombre de résultats corrélés.
+
 ### La page ne s’ouvre pas
 
 ```bash

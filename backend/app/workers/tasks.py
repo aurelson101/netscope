@@ -49,10 +49,14 @@ async def _execute(job_id:str):
             if not job:return
             profile=await db.get(ScanProfile,job.profile_id)
             if not profile:raise ValueError("Profil de scan introuvable")
-            job.status="running"; job.started_at=datetime.now(timezone.utc); await db.commit()
+            unsupported=set(profile.modules)-set(plugins)
+            if unsupported:raise ValueError("Modules de scan non supportés: "+", ".join(sorted(unsupported)))
+            job.status="running";job.progress=0;job.result_count=0;job.started_at=datetime.now(timezone.utc);await db.commit()
             logger.info("scan_started",extra={"job_id":job.id,"target":job.target})
             discovered_targets:set[str]=set()
-            for module in profile.modules:
+            module_count=max(len(profile.modules),1)
+            for module_index,module in enumerate(profile.modules):
+                job.current_module=module;job.progress=int(module_index/module_count*100);await db.commit()
                 options=dict(profile.options.get(module,{}))
                 if module=="snmp":
                     credential_id=job.credential_id or profile.options.get("credential_id")
@@ -68,12 +72,13 @@ async def _execute(job_id:str):
                     if matching and matching.dns_servers:options["servers"]=matching.dns_servers
                 for target in targets:
                     for result in await plugins[module].discover(target,options):
-                        discovered_targets.add(result.target);await correlate(db,result,job.id,job.vrf_id)
-            job.status="completed"
+                        discovered_targets.add(result.target);await correlate(db,result,job.id,job.vrf_id);job.result_count+=1
+                job.progress=int((module_index+1)/module_count*100);await db.commit()
+            job.status="completed";job.current_module=None;job.progress=100
         except Exception as exc:
             await db.rollback()
             job=await db.get(ScanJob,job_id)
-            if job:job.status="failed";job.error=str(exc)[:2000];job.finished_at=datetime.now(timezone.utc);await db.commit()
+            if job:job.status="failed";job.current_module=None;job.error=str(exc)[:2000];job.finished_at=datetime.now(timezone.utc);await db.commit()
             if job:
                 await open_alert(db,fingerprint=f"scan_failed:{job.id}",kind="scan_failed",severity="warning",title="Échec d'un scan réseau",message=f"Le scan de {job.target} a échoué : {str(exc)[:500]}",details={"scan_id":job.id,"target":job.target});await db.commit()
             logger.exception("scan_failed",extra={"job_id":job_id})
