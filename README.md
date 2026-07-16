@@ -334,6 +334,17 @@ La page **Connecteurs** permet à un administrateur de créer des sources passiv
 
 Une source est limitée à 120 requêtes par minute. Les reçus d'anti-rejeu sont conservés 30 jours et les événements datés de plus de 7 jours ou de plus de 5 minutes dans le futur sont refusés.
 
+### Sondes distribuées
+
+Une sonde distante initie elle-même toutes les connexions HTTPS vers NetScope : aucun port entrant n'est nécessaire sur le site distant. Créez-la dans **Sondes**, copiez son jeton, puis déployez-la :
+
+```bash
+cd probe-agent
+NETSCOPE_URL=https://netscope.example.com PROBE_TOKEN='jeton-affiché-une-fois' docker compose up -d --build
+```
+
+La sonde publie un heartbeat, récupère une tâche à la fois et renvoie uniquement les observations appartenant au préfixe demandé. Les tâches abandonnées sont remises en file après 15 minutes. Les résultats sont limités à 5 Mo. ICMP, ARP, Nmap et DNS sont pris en charge ; les profils SNMP et leurs secrets restent exécutés par le scanner central.
+
 ### La page ne s’ouvre pas
 
 ```bash

@@ -78,6 +78,9 @@ class ScanJob(Base):
     profile_id: Mapped[str] = mapped_column(ForeignKey("scan_profiles.id"))
     credential_id: Mapped[str | None] = mapped_column(ForeignKey("credentials.id"))
     vrf_id: Mapped[str | None] = mapped_column(ForeignKey("vrfs.id"), index=True)
+    probe_id: Mapped[str | None] = mapped_column(ForeignKey("probes.id"), index=True)
+    probe_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    probe_claim_token: Mapped[str | None] = mapped_column(String(36))
     status: Mapped[str] = mapped_column(String(24), default="queued")
     progress: Mapped[int] = mapped_column(Integer, default=0)
     current_module: Mapped[str | None] = mapped_column(String(30))
@@ -97,6 +100,7 @@ class ScanSchedule(Base):
     profile_id: Mapped[str] = mapped_column(ForeignKey("scan_profiles.id"))
     credential_id: Mapped[str | None] = mapped_column(ForeignKey("credentials.id"))
     vrf_id: Mapped[str | None] = mapped_column(ForeignKey("vrfs.id"), index=True)
+    probe_id: Mapped[str | None] = mapped_column(ForeignKey("probes.id"), index=True)
     interval_minutes: Mapped[int] = mapped_column(Integer, default=1440)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -200,6 +204,21 @@ class PassiveEventReceipt(Base):
     connector_id: Mapped[str] = mapped_column(ForeignKey("passive_connectors.id"), index=True)
     event_id: Mapped[str] = mapped_column(String(120))
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Probe(Base):
+    __tablename__ = "probes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    site_id: Mapped[str | None] = mapped_column(ForeignKey("sites.id"), index=True)
+    vrf_id: Mapped[str | None] = mapped_column(ForeignKey("vrfs.id"), index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    capabilities: Mapped[list] = mapped_column(JSON,default=list)
+    version: Mapped[str | None] = mapped_column(String(40))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_ip: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
 
 
 class Evidence(Base):

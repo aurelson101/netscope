@@ -30,6 +30,7 @@ class ScanCreate(BaseModel):
     profile_id: str
     credential_id: str | None = None
     vrf_id: str | None = None
+    probe_id: str | None = None
     confirm_large_network: bool = False
     confirm_public_network: bool = False
 
@@ -48,12 +49,39 @@ class PassiveEvent(BaseModel):
 class PassiveEventBatch(BaseModel):
     events: list[PassiveEvent] = Field(min_length=1,max_length=500)
 
+class ProbeCreate(BaseModel):
+    name: str = Field(min_length=2,max_length=120)
+    site_id: str | None = None
+    vrf_id: str | None = None
+
+class ProbeHeartbeat(BaseModel):
+    version: str = Field(max_length=40)
+    capabilities: list[str] = Field(min_length=1,max_length=10)
+
+class ProbeFact(BaseModel):
+    field: str = Field(min_length=1,max_length=80)
+    value: str | int | float | bool | dict | list
+    confidence: float = Field(ge=0,le=1)
+
+class ProbeObservation(BaseModel):
+    source: str = Field(pattern=r"^(icmp|arp|nmap|dns)$")
+    target: str
+    raw: dict = Field(default_factory=dict)
+    facts: list[ProbeFact] = Field(max_length=1000)
+
+class ProbeTaskResult(BaseModel):
+    claim_token: str = Field(min_length=36,max_length=36)
+    status: str = Field(pattern=r"^(completed|failed)$")
+    error: str | None = Field(default=None,max_length=2000)
+    observations: list[ProbeObservation] = Field(default_factory=list,max_length=10000)
+
 class ScanScheduleCreate(BaseModel):
     name: str = Field(min_length=2,max_length=120)
     target: str
     profile_id: str
     credential_id: str | None = None
     vrf_id: str | None = None
+    probe_id: str | None = None
     interval_minutes: int = Field(ge=5,le=525600)
     enabled: bool = True
 
@@ -63,6 +91,7 @@ class ScanScheduleUpdate(BaseModel):
     profile_id: str | None = None
     credential_id: str | None = None
     vrf_id: str | None = None
+    probe_id: str | None = None
     interval_minutes: int | None = Field(default=None,ge=5,le=525600)
     enabled: bool | None = None
 
@@ -87,6 +116,7 @@ class ScanOut(BaseModel):
     target: str
     profile_id: str
     vrf_id: str | None
+    probe_id: str | None
     status: str
     progress: int
     current_module: str | None

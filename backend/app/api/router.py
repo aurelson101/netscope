@@ -24,8 +24,8 @@ from sqlalchemy.orm import selectinload
 from app.core.security import create_token, current_user, decode_token, hash_password, require, verify_password
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, IpRange, IpamAddress, IpamPrefix, NetworkDevice, NetworkIdentityBinding, PassiveConnector, PassiveEventReceipt, PortMacEntry, RawObservation, ReportSchedule, Role, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf
-from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PassiveConnectorCreate, PassiveEventBatch, PasswordChange, PrefixCreate, PrefixUpdate, ReportEmail, ReportScheduleCreate, ReportScheduleUpdate, ScanCreate, ScanOut, ScanScheduleCreate, ScanScheduleUpdate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate
+from app.models import Alert, Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, AuditLog, ConfigurationVersion, Credential, DeviceRole, DhcpReservation, Evidence, IpRange, IpamAddress, IpamPrefix, NetworkDevice, NetworkIdentityBinding, PassiveConnector, PassiveEventReceipt, PortMacEntry, Probe, RawObservation, ReportSchedule, Role, ScanJob, ScanProfile, ScanSchedule, Site, Subnet, SwitchPort, TopologyLink, TopologyNode, User, UserMfa, UserSession, Vlan, Vrf
+from app.schemas.api import ArchiveAsset, AssetOut, AssetUpdate, ConfigurationSnapshotCreate, DatacenterDeviceCreate, DhcpReservationCreate, DnsTest, IpAddressCreate, IpRangeCreate, ManualAssetCreate, MfaCode, PassiveConnectorCreate, PassiveEventBatch, PasswordChange, PrefixCreate, PrefixUpdate, ProbeCreate, ProbeHeartbeat, ProbeTaskResult, ReportEmail, ReportScheduleCreate, ReportScheduleUpdate, ScanCreate, ScanOut, ScanScheduleCreate, ScanScheduleUpdate, SiteCreate, SiteOut, SnmpCredentialCreate, SnmpTest, SnmpV2CredentialCreate, SubnetCreate, SubnetOut, TopologyLinkCreate, TopologyLinkUpdate, UserCreate, UserUpdate, VlanCreate, VrfCreate
 from app.services.topology import ensure_asset_node, rebuild_inferred_topology
 from app.core.secrets import decrypt_secret, encrypt_secret
 from app.services.safety import validate_target
@@ -33,10 +33,87 @@ from app.services.vendors import MOBILE_VENDORS,normalize_vendor
 from app.services.passive import authenticate_connector,issue_connector_token,validate_event_time
 from app.discovery.base import DiscoveryResult
 from app.correlation.engine import correlate
+from app.services.probes import authenticate_probe,issue_probe_token,observation_in_scope
+from app.services.alerts import open_alert,resolve_alert
 
 router = APIRouter(prefix="/api/v1")
 
 def vrf_scope(column,vrf_id:str|None):return column.is_(None) if vrf_id is None else column==vrf_id
+
+REMOTE_MODULES={"icmp","arp","nmap","dns"}
+
+@router.get("/probes")
+async def probes(db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin,Role.operator))):
+    rows=(await db.execute(select(Probe).order_by(Probe.name))).scalars().all();now=datetime.now(timezone.utc)
+    def online(row):return bool(row.enabled and row.last_seen_at and now-(row.last_seen_at if row.last_seen_at.tzinfo else row.last_seen_at.replace(tzinfo=timezone.utc))<timedelta(minutes=2))
+    return [{"id":x.id,"name":x.name,"site_id":x.site_id,"vrf_id":x.vrf_id,"enabled":x.enabled,"capabilities":x.capabilities,"version":x.version,"last_seen_at":x.last_seen_at,"last_ip":x.last_ip,"online":online(x),"created_at":x.created_at} for x in rows]
+
+@router.post("/probes")
+async def create_probe(data:ProbeCreate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    if data.site_id and not await db.get(Site,data.site_id):raise HTTPException(404,"Site introuvable")
+    if data.vrf_id and not await db.get(Vrf,data.vrf_id):raise HTTPException(404,"VRF introuvable")
+    if await db.scalar(select(Probe.id).where(func.lower(Probe.name)==data.name.strip().casefold())):raise HTTPException(409,"Une sonde porte déjà ce nom")
+    probe_id=str(uuid.uuid4());token,digest=issue_probe_token(probe_id);row=Probe(id=probe_id,name=data.name.strip(),site_id=data.site_id,vrf_id=data.vrf_id,token_hash=digest,capabilities=[])
+    db.add(row);db.add(AuditLog(user_id=user.id,action="probe_created",details={"id":row.id,"name":row.name}));await db.commit();return {"id":row.id,"name":row.name,"token":token,"warning":"Copiez ce jeton maintenant : il ne sera plus affiché."}
+
+@router.post("/probes/{probe_id}/rotate-token")
+async def rotate_probe_token(probe_id:str,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    row=await db.get(Probe,probe_id)
+    if not row:raise HTTPException(404,"Sonde introuvable")
+    token,row.token_hash=issue_probe_token(row.id);db.add(AuditLog(user_id=user.id,action="probe_token_rotated",details={"id":row.id}));await db.commit();return {"id":row.id,"token":token,"warning":"L'ancien jeton est révoqué."}
+
+@router.patch("/probes/{probe_id}")
+async def toggle_probe(probe_id:str,enabled:bool,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    row=await db.get(Probe,probe_id)
+    if not row:raise HTTPException(404,"Sonde introuvable")
+    row.enabled=enabled
+    if not enabled:await resolve_alert(db,f"probe_offline:{row.id}")
+    db.add(AuditLog(user_id=user.id,action="probe_toggled",details={"id":row.id,"enabled":enabled}));await db.commit();return {"id":row.id,"enabled":row.enabled}
+
+@router.delete("/probes/{probe_id}")
+async def delete_probe(probe_id:str,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
+    row=await db.get(Probe,probe_id)
+    if not row:raise HTTPException(404,"Sonde introuvable")
+    used=await db.scalar(select(ScanJob.id).where(ScanJob.probe_id==probe_id).limit(1)) or await db.scalar(select(ScanSchedule.id).where(ScanSchedule.probe_id==probe_id).limit(1))
+    if used:raise HTTPException(409,"Cette sonde est référencée par un scan ou une planification ; désactivez-la plutôt")
+    await db.delete(row);db.add(AuditLog(user_id=user.id,action="probe_deleted",details={"id":row.id,"name":row.name}));await db.commit();return {"deleted":True}
+
+@router.post("/probe/heartbeat")
+async def probe_heartbeat(data:ProbeHeartbeat,request:Request,x_probe_token:str|None=Header(default=None),db:AsyncSession=Depends(get_db)):
+    probe=await authenticate_probe(db,x_probe_token);unsupported=set(data.capabilities)-REMOTE_MODULES
+    if unsupported:raise HTTPException(422,"Capacités non supportées: "+", ".join(sorted(unsupported)))
+    probe.version=data.version;probe.capabilities=sorted(set(data.capabilities));probe.last_seen_at=datetime.now(timezone.utc);probe.last_ip=(request.headers.get("x-real-ip") or (request.client.host if request.client else "unknown")).split(",")[0].strip()[:64];await resolve_alert(db,f"probe_offline:{probe.id}");await db.commit();return {"ok":True,"probe_id":probe.id}
+
+@router.get("/probe/tasks/next")
+async def next_probe_task(x_probe_token:str|None=Header(default=None),db:AsyncSession=Depends(get_db)):
+    probe=await authenticate_probe(db,x_probe_token);now=datetime.now(timezone.utc)
+    stale=now-timedelta(minutes=15)
+    await db.execute(update(ScanJob).where(ScanJob.probe_id==probe.id,ScanJob.status=="running",ScanJob.probe_claimed_at<stale).values(status="queued",probe_claimed_at=None,probe_claim_token=None,current_module=None))
+    jobs=(await db.execute(select(ScanJob).where(ScanJob.probe_id==probe.id,ScanJob.status=="queued").order_by(ScanJob.created_at).with_for_update(skip_locked=True).limit(20))).scalars().all()
+    for job in jobs:
+        profile=await db.get(ScanProfile,job.profile_id)
+        if profile and set(profile.modules)<=set(probe.capabilities):
+            job.status="running";job.started_at=job.started_at or now;job.probe_claimed_at=now;job.probe_claim_token=str(uuid.uuid4());job.current_module="remote";await db.commit()
+            return {"id":job.id,"claim_token":job.probe_claim_token,"target":job.target,"modules":profile.modules,"options":profile.options}
+    await db.commit();return Response(status_code=204)
+
+@router.post("/probe/tasks/{job_id}/result")
+async def submit_probe_result(job_id:str,data:ProbeTaskResult,x_probe_token:str|None=Header(default=None),db:AsyncSession=Depends(get_db)):
+    probe=await authenticate_probe(db,x_probe_token);job=await db.get(ScanJob,job_id)
+    if not job or job.probe_id!=probe.id:raise HTTPException(404,"Tâche distante introuvable")
+    if job.status in ("completed","failed"):return {"accepted":True,"duplicate":True,"status":job.status,"observations":job.result_count}
+    if job.status!="running" or job.probe_claim_token!=data.claim_token:raise HTTPException(409,"Le lease de cette tâche a expiré")
+    if len(json.dumps(data.model_dump(mode="json")))>5_000_000:raise HTTPException(413,"Le résultat de sonde dépasse 5 Mo")
+    if data.status=="completed":
+        for item in data.observations:
+            if not observation_in_scope(job.target,item.target):raise HTTPException(422,"Une observation sort de la cible autorisée")
+        for item in data.observations:
+            result=DiscoveryResult(item.source,item.target,{**item.raw,"probe_id":probe.id},[fact.model_dump() for fact in item.facts]);await correlate(db,result,job.id,job.vrf_id)
+        job.status="completed";job.progress=100;job.result_count=len(data.observations);job.error=None
+    else:
+        job.status="failed";job.error=data.error or "Échec signalé par la sonde"
+        await open_alert(db,fingerprint=f"scan_failed:{job.id}",kind="scan_failed",severity="warning",title="Échec d'un scan distant",message=f"La sonde {probe.name} n'a pas terminé le scan de {job.target} : {job.error[:500]}",details={"scan_id":job.id,"probe_id":probe.id,"target":job.target})
+    job.current_module=None;job.probe_claim_token=None;job.finished_at=datetime.now(timezone.utc);probe.last_seen_at=datetime.now(timezone.utc);await db.commit();return {"accepted":True,"duplicate":False,"status":job.status,"observations":len(data.observations)}
 
 @router.get("/passive-connectors")
 async def passive_connectors(db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin))):
@@ -483,11 +560,17 @@ async def create_scan(data: ScanCreate, db: AsyncSession = Depends(get_db), user
     profile = await db.get(ScanProfile, data.profile_id)
     if not profile: raise HTTPException(404, "Profil introuvable")
     if data.vrf_id and not await db.get(Vrf,data.vrf_id):raise HTTPException(404,"VRF introuvable")
-    active = await db.scalar(select(func.count()).select_from(ScanJob).where(ScanJob.target == target,vrf_scope(ScanJob.vrf_id,data.vrf_id),ScanJob.status.in_(["queued","running"])))
+    probe=await db.get(Probe,data.probe_id) if data.probe_id else None
+    if data.probe_id and (not probe or not probe.enabled):raise HTTPException(404,"Sonde active introuvable")
+    if probe and set(profile.modules)-REMOTE_MODULES:raise HTTPException(422,"Ce profil contient un module indisponible sur les sondes distantes")
+    if probe and data.credential_id:raise HTTPException(422,"Les identifiants SNMP ne sont pas transmis aux sondes distantes")
+    if probe and probe.vrf_id!=data.vrf_id:raise HTTPException(422,"La VRF du scan doit correspondre à celle de la sonde")
+    active = await db.scalar(select(func.count()).select_from(ScanJob).where(ScanJob.target == target,vrf_scope(ScanJob.vrf_id,data.vrf_id),vrf_scope(ScanJob.probe_id,data.probe_id),ScanJob.status.in_(["queued","running"])))
     if active: raise HTTPException(409, "Un scan de cette cible est déjà actif")
     if "snmp" in profile.modules and not data.credential_id and not settings.snmp_default_credential:raise HTTPException(422,"Un identifiant SNMP est requis ou configurez un défaut dans .env")
     if data.credential_id and not await db.get(Credential,data.credential_id):raise HTTPException(404,"Identifiant SNMP introuvable")
-    row = ScanJob(target=target, profile_id=profile.id, credential_id=data.credential_id,vrf_id=data.vrf_id, created_by=user.id); db.add(row); db.add(AuditLog(user_id=user.id, action="scan_created", details={"target":target,"vrf_id":data.vrf_id})); await db.commit(); await db.refresh(row)
+    row = ScanJob(target=target, profile_id=profile.id, credential_id=data.credential_id,vrf_id=data.vrf_id,probe_id=data.probe_id, created_by=user.id); db.add(row); db.add(AuditLog(user_id=user.id, action="scan_created", details={"target":target,"vrf_id":data.vrf_id,"probe_id":data.probe_id})); await db.commit(); await db.refresh(row)
+    if probe:return row
     try:
         from app.workers.tasks import execute_scan
         execute_scan.apply_async(args=[row.id],queue="scanner",retry=False)
@@ -505,6 +588,7 @@ async def delete_scan(scan_id: str, db: AsyncSession = Depends(get_db), user: Us
     if row.status in ("queued", "running"):
         raise HTTPException(409, "Un scan en cours ne peut pas être supprimé")
     await db.execute(update(RawObservation).where(RawObservation.scan_id == scan_id).values(scan_id=None))
+    await db.execute(update(NetworkIdentityBinding).where(NetworkIdentityBinding.scan_id==scan_id).values(scan_id=None))
     details = {"id": row.id, "target": row.target, "status": row.status}
     await db.delete(row)
     db.add(AuditLog(user_id=user.id, action="scan_history_deleted", details=details))
@@ -518,8 +602,15 @@ async def scan_schedules(db:AsyncSession=Depends(get_db),_=Depends(current_user)
 @router.post("/scan-schedules")
 async def create_scan_schedule(data:ScanScheduleCreate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin,Role.operator))):
     target=validate_target(data.target,confirm_large=True,confirm_public=False)
-    if not await db.get(ScanProfile,data.profile_id):raise HTTPException(404,"Profil introuvable")
+    profile=await db.get(ScanProfile,data.profile_id)
+    if not profile:raise HTTPException(404,"Profil introuvable")
     if data.vrf_id and not await db.get(Vrf,data.vrf_id):raise HTTPException(404,"VRF introuvable")
+    if data.probe_id:
+        probe=await db.get(Probe,data.probe_id)
+        if not probe or not probe.enabled:raise HTTPException(404,"Sonde active introuvable")
+        if set(profile.modules)-REMOTE_MODULES:raise HTTPException(422,"Ce profil n'est pas compatible avec une sonde distante")
+        if data.credential_id:raise HTTPException(422,"Les identifiants SNMP ne sont pas transmis aux sondes distantes")
+        if probe.vrf_id!=data.vrf_id:raise HTTPException(422,"La VRF de la planification doit correspondre à celle de la sonde")
     row=ScanSchedule(**data.model_dump(exclude={"target"}),target=target,created_by=user.id,next_run_at=datetime.now(timezone.utc)+timedelta(minutes=data.interval_minutes));db.add(row);db.add(AuditLog(user_id=user.id,action="scan_schedule_created",details={"name":row.name}));await db.commit();await db.refresh(row);return row
 
 @router.patch("/scan-schedules/{schedule_id}")
@@ -531,6 +622,15 @@ async def update_scan_schedule(schedule_id:str,data:ScanScheduleUpdate,db:AsyncS
     if values.get("profile_id") and not await db.get(ScanProfile,values["profile_id"]):raise HTTPException(404,"Profil introuvable")
     if values.get("credential_id") and not await db.get(Credential,values["credential_id"]):raise HTTPException(404,"Identifiant SNMP introuvable")
     if values.get("vrf_id") and not await db.get(Vrf,values["vrf_id"]):raise HTTPException(404,"VRF introuvable")
+    if values.get("probe_id"):
+        selected_probe=await db.get(Probe,values["probe_id"])
+        if not selected_probe or not selected_probe.enabled:raise HTTPException(404,"Sonde active introuvable")
+    effective_profile=await db.get(ScanProfile,values.get("profile_id",row.profile_id));effective_probe=values.get("probe_id",row.probe_id);effective_credential=values.get("credential_id",row.credential_id)
+    if effective_probe and effective_profile and set(effective_profile.modules)-REMOTE_MODULES:raise HTTPException(422,"Ce profil n'est pas compatible avec une sonde distante")
+    if effective_probe and effective_credential:raise HTTPException(422,"Les identifiants SNMP ne sont pas transmis aux sondes distantes")
+    if effective_probe:
+        selected_probe=await db.get(Probe,effective_probe)
+        if selected_probe and selected_probe.vrf_id!=values.get("vrf_id",row.vrf_id):raise HTTPException(422,"La VRF doit correspondre à celle de la sonde")
     for field,value in values.items():setattr(row,field,value)
     if "interval_minutes" in values or values.get("enabled") is True:row.next_run_at=datetime.now(timezone.utc)+timedelta(minutes=row.interval_minutes)
     db.add(AuditLog(user_id=user.id,action="scan_schedule_updated",details={"id":row.id,"fields":list(values)}));await db.commit();return row

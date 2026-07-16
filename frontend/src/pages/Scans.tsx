@@ -9,6 +9,7 @@ export function Scans() {
     [profiles, setProfiles] = useState<any[]>([]),
     [credentials, setCredentials] = useState<any[]>([]),
     [vrfs, setVrfs] = useState<any[]>([]),
+    [probes, setProbes] = useState<any[]>([]),
     [schedules, setSchedules] = useState<any[]>([]),
     [diagnostic, setDiagnostic] = useState<any>(),
     [error, setError] = useState("");
@@ -26,6 +27,7 @@ export function Scans() {
       .then(setSchedules)
       .catch((x) => setError(x.message));
     api<any[]>("/ipam/vrfs").then(setVrfs).catch(() => setVrfs([]));
+    api<any[]>("/probes").then(setProbes).catch(() => setProbes([]));
   };
   useEffect(() => {
     load();
@@ -43,6 +45,7 @@ export function Scans() {
           profile_id: f.get("profile_id"),
           credential_id: f.get("credential_id") || null,
           vrf_id: f.get("vrf_id") || null,
+          probe_id: f.get("probe_id") || null,
         }),
       });
       setError("");
@@ -64,6 +67,7 @@ export function Scans() {
           profile_id: f.get("profile_id"),
           credential_id: f.get("credential_id") || null,
           vrf_id: f.get("vrf_id") || null,
+          probe_id: f.get("probe_id") || null,
           interval_minutes: Number(f.get("interval_minutes")),
           enabled: true,
         }),
@@ -136,7 +140,7 @@ export function Scans() {
           <h3>Nouveau scan</h3>
           {editable ? (
             <form onSubmit={submit}>
-              <TargetFields profiles={profiles} credentials={credentials} vrfs={vrfs} />
+              <TargetFields profiles={profiles} credentials={credentials} vrfs={vrfs} probes={probes} />
               <button className="primary">
                 <Play />
                 Lancer le scan
@@ -187,7 +191,7 @@ export function Scans() {
                 Nom
                 <input name="name" required />
               </label>
-              <TargetFields profiles={profiles} credentials={credentials} vrfs={vrfs} />
+              <TargetFields profiles={profiles} credentials={credentials} vrfs={vrfs} probes={probes} />
               <label>
                 Fréquence
                 <select name="interval_minutes" defaultValue="1440">
@@ -272,10 +276,12 @@ function TargetFields({
   profiles,
   credentials,
   vrfs,
+  probes,
 }: {
   profiles: any[];
   credentials: any[];
   vrfs: any[];
+  probes: any[];
 }) {
   return (
     <>
@@ -298,6 +304,13 @@ function TargetFields({
               {p.name}
             </option>
           ))}
+        </select>
+      </label>
+      <label>
+        Exécution
+        <select name="probe_id">
+          <option value="">Scanner local</option>
+          {probes.filter((probe) => probe.enabled).map((probe) => <option value={probe.id} key={probe.id}>{probe.name}{probe.online ? " · en ligne" : " · hors ligne"}</option>)}
         </select>
       </label>
       <label>

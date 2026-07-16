@@ -1,0 +1,15 @@
+services:
+  probe:
+    build:
+      context: ..
+      dockerfile: probe-agent/Dockerfile
+    restart: unless-stopped
+    cap_add: [NET_RAW, NET_ADMIN]
+    environment:
+      NETSCOPE_URL: ${NETSCOPE_URL:?URL NetScope requise}
+      PROBE_TOKEN: ${PROBE_TOKEN:?Jeton de sonde requis}
+      VERIFY_TLS: ${VERIFY_TLS:-true}
+      POLL_SECONDS: ${POLL_SECONDS:-5}
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]

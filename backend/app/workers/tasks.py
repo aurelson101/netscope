@@ -17,11 +17,12 @@ from app.correlation.engine import correlate
 from app.core.secrets import decrypt_secret
 from app.models import Credential, IpamPrefix, ReportSchedule, ScanJob, ScanProfile, ScanSchedule
 from app.services.alerts import evaluate_asset_lifecycle,open_alert
+from app.services.probes import evaluate_probe_health
 
 configure_logging();logger=logging.getLogger("netscope.worker")
 celery=Celery("netscope",broker=settings.redis_url,backend=settings.redis_url)
 celery.conf.task_routes={"execute_scan":{"queue":"scanner"}}
-celery.conf.beat_schedule={"dispatch-due-schedules":{"task":"dispatch_due_schedules","schedule":60.0},"evaluate-asset-lifecycle":{"task":"evaluate_asset_lifecycle","schedule":float(settings.lifecycle_interval_seconds)}}
+celery.conf.beat_schedule={"dispatch-due-schedules":{"task":"dispatch_due_schedules","schedule":60.0},"evaluate-asset-lifecycle":{"task":"evaluate_asset_lifecycle","schedule":float(settings.lifecycle_interval_seconds)},"evaluate-probe-health":{"task":"evaluate_probe_health","schedule":60.0}}
 plugins={p.name:p for p in [IcmpPlugin(),ArpPlugin(),NmapPlugin(),DNSPlugin(),SnmpPlugin()]}
 
 def module_targets(module:str,target:str,discovered:set[str])->list[str]:
@@ -91,6 +92,12 @@ def evaluate_asset_lifecycle_task():return asyncio.run(_evaluate_asset_lifecycle
 async def _evaluate_asset_lifecycle():
     async with SessionLocal() as db:return await evaluate_asset_lifecycle(db)
 
+@celery.task(name="evaluate_probe_health")
+def evaluate_probe_health_task():return asyncio.run(_evaluate_probe_health())
+
+async def _evaluate_probe_health():
+    async with SessionLocal() as db:return await evaluate_probe_health(db)
+
 @celery.task(name="dispatch_due_schedules")
 def dispatch_due_schedules():return asyncio.run(_dispatch_due())
 
@@ -101,9 +108,11 @@ async def _dispatch_due():
         scans=(await db.execute(select(ScanSchedule).where(ScanSchedule.enabled.is_(True),ScanSchedule.next_run_at<=now))).scalars().all()
         for schedule in scans:
             scope=ScanJob.vrf_id.is_(None) if schedule.vrf_id is None else ScanJob.vrf_id==schedule.vrf_id
-            active=await db.scalar(select(ScanJob.id).where(ScanJob.target==schedule.target,scope,ScanJob.status.in_(["queued","running"])).limit(1))
+            probe_scope=ScanJob.probe_id.is_(None) if schedule.probe_id is None else ScanJob.probe_id==schedule.probe_id
+            active=await db.scalar(select(ScanJob.id).where(ScanJob.target==schedule.target,scope,probe_scope,ScanJob.status.in_(["queued","running"])).limit(1))
             if not active:
-                job=ScanJob(target=schedule.target,profile_id=schedule.profile_id,credential_id=schedule.credential_id,vrf_id=schedule.vrf_id,created_by=schedule.created_by);db.add(job);await db.flush();queued_scans.append((schedule.id,job.id))
+                job=ScanJob(target=schedule.target,profile_id=schedule.profile_id,credential_id=schedule.credential_id,vrf_id=schedule.vrf_id,probe_id=schedule.probe_id,created_by=schedule.created_by);db.add(job);await db.flush()
+                if not schedule.probe_id:queued_scans.append((schedule.id,job.id))
             schedule.last_run_at=now;schedule.next_run_at=now+timedelta(minutes=schedule.interval_minutes)
         reports=(await db.execute(select(ReportSchedule).where(ReportSchedule.enabled.is_(True),ReportSchedule.next_run_at<=now))).scalars().all()
         for schedule in reports:
