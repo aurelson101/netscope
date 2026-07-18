@@ -18,11 +18,21 @@ def latest_timestamp(current:datetime|None,candidate:datetime)->datetime:
     candidate_utc=candidate.replace(tzinfo=candidate.tzinfo or timezone.utc).astimezone(timezone.utc)
     return candidate if candidate_utc>current_utc else current
 
+def strongest_facts(facts:list[dict])->dict[str,dict]:
+    selected={}
+    for fact in facts:
+        if fact["field"]=="service":continue
+        previous=selected.get(fact["field"])
+        if previous is None or float(fact.get("confidence",0))>=float(previous.get("confidence",0)):
+            selected[fact["field"]]=fact
+    return selected
+
 
 async def correlate(db: AsyncSession, result: DiscoveryResult, scan_id: str | None = None, vrf_id: str | None = None, observed_at:datetime|None=None) -> Asset:
     seen_at=observed_at or datetime.now(timezone.utc)
     observation=RawObservation(scan_id=scan_id,source=result.source,target=result.target,raw_data=result.raw,observed_at=seen_at); db.add(observation); await db.flush()
-    facts={f["field"]:f for f in result.facts if f["field"] != "service"}
+    # Nmap can emit a hostname/OS more than once (XML + NSE script).
+    facts=strongest_facts(result.facts)
     mac=normalize_mac(facts.get("mac",{}).get("value"));ip=facts.get("ip",{}).get("value",result.target)
     identity=await resolve_identity(db,ip,mac,vrf_id);asset=identity.asset
     created=asset is None
