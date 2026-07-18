@@ -28,7 +28,6 @@ celery.conf.beat_schedule={"dispatch-due-schedules":{"task":"dispatch_due_schedu
 plugins={p.name:p for p in [IcmpPlugin(),ArpPlugin(),NmapPlugin(),DNSPlugin(),SnmpPlugin()]}
 
 def module_targets(module:str,target:str,discovered:set[str])->list[str]:
-    if module=="arp" and ipaddress.ip_network(target,strict=False).version==6:return []
     if module in ("dns","snmp") and "/" in target:
         if discovered:return sorted(discovered,key=lambda value:(ipaddress.ip_address(value).version,int(ipaddress.ip_address(value))))
         network=ipaddress.ip_network(target,strict=False)

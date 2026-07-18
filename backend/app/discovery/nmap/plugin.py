@@ -1,4 +1,4 @@
-import asyncio,ipaddress
+import asyncio,ipaddress,os
 from app.discovery.base import DiscoveryPlugin
 from app.discovery.nmap.parser import parse_nmap_xml
 
@@ -9,13 +9,18 @@ NMAP_PROFILES={
     "udp":["-n","-T4","-sU","-sV","--version-light","--top-ports","100","--host-timeout","180s"],
 }
 
-def build_nmap_args(options:dict)->list[str]:
+def build_nmap_args(options:dict,privileged:bool|None=None)->list[str]:
     profile=options.get("profile","fast")
     if profile not in NMAP_PROFILES:raise ValueError(f"Profil Nmap non supporté: {profile}")
+    privileged=os.geteuid()==0 if privileged is None else privileged
+    if profile=="udp" and not privileged:raise ValueError("Le profil Nmap UDP nécessite une sonde exécutée avec les privilèges root")
     default_rate=1000 if profile=="fast" else (50 if profile=="udp" else 100)
     max_rate=int(options.get("max_rate",default_rate))
     if not 1<=max_rate<=5000:raise ValueError("Le débit Nmap doit être compris entre 1 et 5000 paquets/s")
-    return [*NMAP_PROFILES[profile],"-oX","-","--max-rate",str(max_rate)]
+    args=list(NMAP_PROFILES[profile])
+    if not privileged:
+        args=[arg for arg in args if arg not in {"-O","--osscan-limit"}]
+    return [*args,"-oX","-","--max-rate",str(max_rate)]
 
 def build_scan_args(target:str,options:dict)->list[str]:
     args=build_nmap_args(options)

@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.discovery.base import DiscoveryResult
 from app.models import Asset, AssetAddress, AssetArchive, AssetHistory, AssetIdentifier, AssetMetadata, AssetService, AssetStatus, Evidence, IpamAddress, IpamPrefix, NetworkIdentityBinding, RawObservation
-from app.services.vendors import infer_mobile_identity,normalize_mac,normalize_vendor,vendor_from_mac
+from app.services.vendors import infer_device_type,infer_mobile_identity,normalize_mac,normalize_vendor,vendor_from_mac
 from app.services.alerts import open_alert,resolve_alert
 from app.services.identity import resolve_identity
 
@@ -18,11 +18,21 @@ def latest_timestamp(current:datetime|None,candidate:datetime)->datetime:
     candidate_utc=candidate.replace(tzinfo=candidate.tzinfo or timezone.utc).astimezone(timezone.utc)
     return candidate if candidate_utc>current_utc else current
 
+def strongest_facts(facts:list[dict])->dict[str,dict]:
+    selected={}
+    for fact in facts:
+        if fact["field"]=="service":continue
+        previous=selected.get(fact["field"])
+        if previous is None or float(fact.get("confidence",0))>=float(previous.get("confidence",0)):
+            selected[fact["field"]]=fact
+    return selected
+
 
 async def correlate(db: AsyncSession, result: DiscoveryResult, scan_id: str | None = None, vrf_id: str | None = None, observed_at:datetime|None=None) -> Asset:
     seen_at=observed_at or datetime.now(timezone.utc)
     observation=RawObservation(scan_id=scan_id,source=result.source,target=result.target,raw_data=result.raw,observed_at=seen_at); db.add(observation); await db.flush()
-    facts={f["field"]:f for f in result.facts if f["field"] != "service"}
+    # Nmap can emit a hostname/OS more than once (XML + NSE script).
+    facts=strongest_facts(result.facts)
     mac=normalize_mac(facts.get("mac",{}).get("value"));ip=facts.get("ip",{}).get("value",result.target)
     identity=await resolve_identity(db,ip,mac,vrf_id);asset=identity.asset
     created=asset is None
@@ -74,6 +84,12 @@ async def correlate(db: AsyncSession, result: DiscoveryResult, scan_id: str | No
         if field not in locked and (not getattr(asset,field) or getattr(asset,field)=="unknown"):
             old=getattr(asset,field);setattr(asset,field,value);db.add(AssetHistory(asset_id=asset.id,event_type=f"{field}_inferred",old_value=old,new_value=value))
             asset.confidence=max(asset.confidence,0.68)
+    ports={int(f["value"]["port"]) for f in result.facts if f["field"]=="service"}
+    inferred_type=infer_device_type(asset.hostname,asset.manufacturer,asset.model,asset.operating_system,ports)
+    if inferred_type and "device_type" not in locked and (not asset.device_type or asset.device_type=="unknown"):
+        asset.device_type=inferred_type;asset.confidence=max(asset.confidence,0.72)
+    if result.source=="arp" and asset.device_type=="unknown":
+        asset.device_type="endpoint";asset.confidence=max(asset.confidence,0.55)
     if facts.get("status",{}).get("value") in ("up","online"):
         if asset.status!=AssetStatus.online:db.add(AssetHistory(asset_id=asset.id,event_type="status_changed",old_value=asset.status.value,new_value=AssetStatus.online.value))
         asset.status=AssetStatus.online
@@ -86,7 +102,6 @@ async def correlate(db: AsyncSession, result: DiscoveryResult, scan_id: str | No
             s=value
             existing=await db.scalar(select(AssetService.id).where(AssetService.asset_id==asset.id,AssetService.protocol==s["protocol"],AssetService.port==s["port"]))
             if not existing: db.add(AssetService(asset_id=asset.id,**s))
-    ports={int(f["value"]["port"]) for f in result.facts if f["field"]=="service"}
     if 445 in ports or 3389 in ports:
         if not asset.operating_system: asset.operating_system="Windows (probable)"
         if asset.device_type=="unknown": asset.device_type="workstation"

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.0.3 — 2026-07-18
+
+- nouveau menu Sondes avec découverte forcée et suivi quasi-direct des tâches ;
+- remontée des réseaux IPv4 visibles depuis les agents distribués ;
+- inventaire des équipements observés par sonde et accès à leur fiche ;
+- déploiement de sonde en réseau hôte pour les scans LAN ;
+- migration de routes de sonde réentrante après une interruption ;
+- harmonisation des versions backend, API et frontend.
+- correction des profils Nmap standard/profond sur les sondes non-root : la détection de services reste active et l'empreinte OS est désactivée proprement.
+- sonde LAN exécutée avec l'eUID root isolé pour restaurer la capture ARP, les MAC/OUI et l'empreinte OS.
+
 ## 0.0.2 — 2026-07-12
 
 - migrations Alembic compatibles avec les installations neuves et existantes ;

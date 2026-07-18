@@ -179,7 +179,7 @@ export function Assets() {
                 <td className="mono">
                   {a.identifiers.find((x) => x.kind === "mac")?.value || "—"}
                 </td>
-                <td>{a.manufacturer || "—"}</td>
+                <td>{a.manufacturer || (() => { const mac = a.identifiers.find((x) => x.kind === "mac")?.value; const local = mac && ((parseInt(mac.replace(/:/g, "").slice(0, 2), 16) & 2) !== 0); return local ? "MAC privée / randomisée" : "—"; })()}</td>
                 <td>
                   <span className="tag">{a.device_type}</span>
                 </td>
@@ -235,6 +235,12 @@ function AssetEditor({
   onSave: (e: FormEvent<HTMLFormElement>) => void;
   onClose: () => void;
 }) {
+  const [metadata, setMetadata] = useState<any>({});
+  useEffect(() => {
+    if (asset) api<any>(`/assets/${asset.id}/metadata`).then(setMetadata).catch(() => setMetadata({}));
+    else setMetadata({});
+  }, [asset?.id]);
+  const mac = asset?.identifiers.find((x) => x.kind === "mac")?.value || "";
   return (
     <article className="panel assetEditor">
       <div className="editorHead">
@@ -256,6 +262,7 @@ function AssetEditor({
             </label>
           </>
         )}
+        {asset && <label>Adresse MAC<input name="mac_address" value={mac || "Non disponible"} readOnly /></label>}
         <label>
           Nom d’hôte
           <input name="hostname" defaultValue={asset?.hostname} />
@@ -305,15 +312,15 @@ function AssetEditor({
         </label>
         <label>
           Rôle
-          <input name="role" />
+          <input name="role" defaultValue={metadata.role || ""} />
         </label>
         <label>
           Propriétaire
-          <input name="owner" />
+          <input name="owner" defaultValue={metadata.owner || ""} />
         </label>
         <label>
           Criticité
-          <select name="criticality">
+          <select name="criticality" defaultValue={metadata.criticality || ""}>
             <option value="">Non définie</option>
             <option>low</option>
             <option>medium</option>
@@ -323,7 +330,7 @@ function AssetEditor({
         </label>
         <label className="wide">
           Notes
-          <input name="notes" />
+          <input name="notes" defaultValue={metadata.notes || ""} />
         </label>
         <button className="primary wide">
           {asset ? "Enregistrer les modifications" : "Créer l’actif"}

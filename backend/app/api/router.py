@@ -54,7 +54,26 @@ async def require_snmp_credential(db:AsyncSession,credential_id:str|None)->Crede
 async def probes(db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin,Role.operator))):
     rows=(await db.execute(select(Probe).order_by(Probe.name))).scalars().all();now=datetime.now(timezone.utc)
     def online(row):return bool(row.enabled and row.last_seen_at and now-(row.last_seen_at if row.last_seen_at.tzinfo else row.last_seen_at.replace(tzinfo=timezone.utc))<timedelta(minutes=2))
-    return [{"id":x.id,"name":x.name,"site_id":x.site_id,"vrf_id":x.vrf_id,"enabled":x.enabled,"capabilities":x.capabilities,"version":x.version,"last_seen_at":x.last_seen_at,"last_ip":x.last_ip,"online":online(x),"created_at":x.created_at} for x in rows]
+    return [{"id":x.id,"name":x.name,"site_id":x.site_id,"vrf_id":x.vrf_id,"enabled":x.enabled,"capabilities":x.capabilities,"reachable_networks":x.reachable_networks or [],"version":x.version,"last_seen_at":x.last_seen_at,"last_ip":x.last_ip,"online":online(x),"created_at":x.created_at} for x in rows]
+
+@router.get("/probes/{probe_id}/live")
+async def probe_live(probe_id:str,db:AsyncSession=Depends(get_db),_=Depends(require(Role.admin,Role.operator))):
+    probe=await db.get(Probe,probe_id)
+    if not probe:raise HTTPException(404,"Sonde introuvable")
+    jobs=(await db.execute(select(ScanJob).where(ScanJob.probe_id==probe_id).order_by(ScanJob.created_at.desc()).limit(20))).scalars().all()
+    scan_ids=[x.id for x in jobs];bindings=[]
+    if scan_ids:
+        bindings=(await db.execute(select(NetworkIdentityBinding,Asset).outerjoin(Asset,Asset.id==NetworkIdentityBinding.asset_id).where(NetworkIdentityBinding.scan_id.in_(scan_ids)).order_by(NetworkIdentityBinding.observed_at.desc()).limit(500))).all()
+    seen={};assets=[]
+    for binding,asset in bindings:
+        key=(binding.ip_address,binding.vrf_id)
+        item=seen.get(key)
+        if item:
+            for field,value in (("asset_id",binding.asset_id),("mac_address",binding.mac_address),("hostname",asset.hostname if asset else None),("manufacturer",asset.manufacturer if asset else None),("device_type",asset.device_type if asset else None)):
+                if value and not item.get(field):item[field]=value
+            continue
+        item={"asset_id":binding.asset_id,"ip_address":binding.ip_address,"mac_address":binding.mac_address,"hostname":asset.hostname if asset else None,"manufacturer":asset.manufacturer if asset else None,"device_type":asset.device_type if asset else None,"source":binding.source,"observed_at":binding.observed_at};seen[key]=item;assets.append(item)
+    return {"probe_id":probe.id,"reachable_networks":probe.reachable_networks or [],"scans":[ScanOut.model_validate(x) for x in jobs],"assets":assets}
 
 @router.post("/probes")
 async def create_probe(data:ProbeCreate,db:AsyncSession=Depends(get_db),user:User=Depends(require(Role.admin))):
@@ -90,7 +109,11 @@ async def delete_probe(probe_id:str,db:AsyncSession=Depends(get_db),user:User=De
 async def probe_heartbeat(data:ProbeHeartbeat,request:Request,x_probe_token:str|None=Header(default=None),db:AsyncSession=Depends(get_db)):
     probe=await authenticate_probe(db,x_probe_token);unsupported=set(data.capabilities)-REMOTE_MODULES
     if unsupported:raise HTTPException(422,"Capacités non supportées: "+", ".join(sorted(unsupported)))
-    probe.version=data.version;probe.capabilities=sorted(set(data.capabilities));probe.last_seen_at=datetime.now(timezone.utc);probe.last_ip=(request.headers.get("x-real-ip") or (request.client.host if request.client else "unknown")).split(",")[0].strip()[:64];await resolve_alert(db,f"probe_offline:{probe.id}");await db.commit();return {"ok":True,"probe_id":probe.id}
+    networks=[]
+    for value in data.reachable_networks:
+        try:networks.append(str(ipaddress.ip_network(value,strict=False)))
+        except ValueError:raise HTTPException(422,f"Réseau annoncé invalide: {value}")
+    probe.version=data.version;probe.capabilities=sorted(set(data.capabilities));probe.reachable_networks=sorted(set(networks));probe.last_seen_at=datetime.now(timezone.utc);probe.last_ip=(request.headers.get("x-real-ip") or (request.client.host if request.client else "unknown")).split(",")[0].strip()[:64];await resolve_alert(db,f"probe_offline:{probe.id}");await db.commit();return {"ok":True,"probe_id":probe.id}
 
 @router.get("/probe/tasks/next")
 async def next_probe_task(x_probe_token:str|None=Header(default=None),db:AsyncSession=Depends(get_db)):

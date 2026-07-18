@@ -5,7 +5,7 @@ from app.core.config import settings
 from app.core.security import hash_password
 from app.db.session import SessionLocal, engine
 from app.models import Asset, AssetAddress, AuditLog, Base, DeviceRole, IpamAddress, IpamPrefix, Role, ScanJob, ScanProfile, Site, Subnet, User, UserSession
-from app.services.vendors import infer_mobile_identity
+from app.services.vendors import infer_device_type, infer_mobile_identity, vendor_from_mac
 
 async def recover_admin_access(db)->bool:
     if await db.scalar(select(func.count()).select_from(User).where(User.role==Role.admin,User.active.is_(True))):return False
@@ -40,11 +40,19 @@ async def init_db():
         await db.execute(update(Asset).where(Asset.manufacturer.ilike("%unknown%")).values(manufacturer=None))
         await db.execute(update(Asset).where(Asset.manufacturer.ilike("%locally administered%")).values(manufacturer=None))
         for asset in (await db.execute(select(Asset))).scalars():
+            mac = next((item.value for item in asset.identifiers if item.kind.lower() in {"mac", "mac_address"}), None)
+            detected_vendor = vendor_from_mac(mac)
+            if detected_vendor and not asset.manufacturer:
+                asset.manufacturer = detected_vendor
             inferred=infer_mobile_identity(asset.hostname,asset.model,asset.operating_system)
             if inferred.get("manufacturer") and not asset.manufacturer:asset.manufacturer=inferred["manufacturer"]
             if inferred.get("operating_system") and not asset.operating_system:asset.operating_system=inferred["operating_system"]
             if inferred.get("device_type") and asset.device_type=="unknown":asset.device_type=inferred["device_type"]
-            if inferred:asset.confidence=max(asset.confidence,0.68)
+            detected_type = infer_device_type(asset.hostname, asset.manufacturer, asset.model, asset.operating_system)
+            if detected_type and asset.device_type == "unknown":
+                asset.device_type = detected_type
+            if detected_vendor or inferred or detected_type:
+                asset.confidence=max(asset.confidence,0.68)
         if not await db.scalar(select(User.id).limit(1)):
             db.add(User(username=settings.admin_identifier,password_hash=hash_password(settings.admin_password),role=Role.admin))
         else:await recover_admin_access(db)

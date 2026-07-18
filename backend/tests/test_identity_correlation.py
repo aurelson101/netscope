@@ -6,6 +6,15 @@ from app.correlation.engine import correlate
 from app.discovery.base import DiscoveryResult
 from app.models import Alert, Asset, AssetAddress, AssetIdentifier, Base, IpamAddress, NetworkIdentityBinding
 from app.services.identity import resolve_identity
+from app.correlation.engine import strongest_facts
+
+def test_strongest_fact_is_selected_by_correlation():
+    facts=strongest_facts([
+        {"field":"ip","value":"192.0.2.10","confidence":1},
+        {"field":"operating_system","value":"Linux 6.x","confidence":0.95},
+        {"field":"operating_system","value":"unknown","confidence":0.1},
+    ])
+    assert facts["operating_system"]["value"]=="Linux 6.x"
 
 
 @pytest_asyncio.fixture

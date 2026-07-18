@@ -4,6 +4,9 @@ services:
       context: ..
       dockerfile: probe-agent/Dockerfile
     restart: unless-stopped
+    # La sonde partage l'espace réseau de l'hôte afin de voir ses routes et ses LAN.
+    # L'agent est root dans ce conteneur uniquement pour arp-scan/Nmap OS.
+    network_mode: host
     cap_add: [NET_RAW, NET_ADMIN]
     environment:
       NETSCOPE_URL: ${NETSCOPE_URL:?URL NetScope requise}
