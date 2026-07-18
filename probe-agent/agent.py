@@ -22,12 +22,22 @@ def reachable_networks():
                 address=int(fields[1],16).to_bytes(4,"little");mask=int(fields[7],16).to_bytes(4,"little")
                 networks.add(str(ipaddress.ip_network((str(ipaddress.ip_address(address)),str(ipaddress.ip_address(mask))),strict=False)))
     except (OSError,ValueError):log.exception("route_inventory_failed")
+    try:
+        # /proc/net/ipv6_route stores 32-hex-digit addresses and prefix length.
+        with open("/proc/net/ipv6_route",encoding="ascii") as routes:
+            for line in routes:
+                fields=line.split()
+                if len(fields) < 10 or fields[0] == "0" * 32: continue
+                prefix=ipaddress.IPv6Address(int(fields[0],16)); length=int(fields[2],16)
+                if length == 0: continue
+                networks.add(str(ipaddress.ip_network(f"{prefix}/{length}",strict=False)))
+    except (OSError,ValueError):log.exception("ipv6_route_inventory_failed")
     networks.discard("0.0.0.0/0")
-    return sorted(networks,key=lambda value:int(ipaddress.ip_network(value).network_address))
+    return sorted(networks,key=lambda value:(ipaddress.ip_network(value).version,int(ipaddress.ip_network(value).network_address)))
 
 def targets(module,target,discovered):
     if module=="dns" and "/" in target:
-        if discovered:return sorted(discovered,key=lambda x:int(ipaddress.ip_address(x)))
+        if discovered:return sorted(discovered,key=lambda x:(ipaddress.ip_address(x).version,int(ipaddress.ip_address(x))))
         network=ipaddress.ip_network(target,strict=False);return [str(network.network_address)] if network.num_addresses==1 else []
     return [target]
 
