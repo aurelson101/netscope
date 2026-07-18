@@ -38,7 +38,7 @@ def infer_device_type(hostname:str|None=None,manufacturer:str|None=None,model:st
         return "printer"
     if any(x in text for x in ("PHONE","IPHONE","ANDROID","PIXEL")):
         return "phone"
-    if any(x in text for x in ("WINDOWS","LINUX","MACOS","DESKTOP","LAPTOP","WORKSTATION")) or ports & {135,139,445,3389}:
+    if any(x in text for x in ("WINDOWS","LINUX","MACOS","DESKTOP","LAPTOP","WORKSTATION","AUREL-","PC-")) or ports & {135,139,445,3389}:
         return "workstation"
     return None
 
