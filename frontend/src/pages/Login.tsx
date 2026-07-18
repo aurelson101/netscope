@@ -30,7 +30,7 @@ export function Login() {
         </div>
         <p>Inventaire et découverte réseau</p>
         <label>
-          Adresse email
+          Nom d’utilisateur (email)
           <input
             name="username"
             type="email"
