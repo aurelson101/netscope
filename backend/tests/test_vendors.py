@@ -1,5 +1,5 @@
 import pytest
-from app.services.vendors import infer_mobile_identity,is_private_mac,normalize_mac,normalize_vendor,vendor_from_mac
+from app.services.vendors import infer_device_type,infer_mobile_identity,is_private_mac,normalize_mac,normalize_vendor,vendor_from_mac
 
 @pytest.mark.parametrize(("raw","expected"),[("Apple, Inc.","Apple"),("Samsung Electronics Co.,Ltd","Samsung"),("Google LLC","Google"),("Xiaomi Communications Co Ltd","Xiaomi"),("Motorola Mobility LLC","Motorola"),("HMD Global Oy","HMD"),("Shenzhen Transsion Holdings","Tecno"),("Cisco Systems","Cisco Systems")])
 def test_mobile_vendor_normalization(raw,expected):
@@ -22,3 +22,8 @@ def test_phone_mac_formats_are_normalized():
 def test_offline_oui_lookup_ignores_private_addresses():
     assert vendor_from_mac("00:0C:29:12:34:56")=="VMware"
     assert vendor_from_mac("02:0C:29:12:34:56") is None
+
+def test_device_type_inference_from_network_identity():
+    assert infer_device_type(hostname="_gateway",manufacturer="Sagemcom Broadband SAS")=="router"
+    assert infer_device_type(hostname="aurel-l5IRH8",operating_system="Windows 11")=="workstation"
+    assert infer_device_type(ports={9100})=="printer"

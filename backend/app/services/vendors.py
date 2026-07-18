@@ -25,6 +25,23 @@ def infer_mobile_identity(hostname:str|None=None,model:str|None=None,operating_s
         return {"device_type":"phone","operating_system":"Android"}
     return {}
 
+def infer_device_type(hostname:str|None=None,manufacturer:str|None=None,model:str|None=None,operating_system:str|None=None,ports:set[int]|None=None)->str|None:
+    text=" ".join(x for x in (hostname,manufacturer,model,operating_system) if x).upper()
+    ports=ports or set()
+    if any(x in text for x in ("GATEWAY","ROUTER","ROUTEROS","FIREWALL","SAGEMCOM","OPENWRT","EDGEOS")):
+        return "router"
+    if any(x in text for x in ("SWITCH","BRIDGE","IOS XE","JUNOS","ARISTA")):
+        return "switch"
+    if any(x in text for x in ("ACCESS POINT","WIRELESS","UNIFI","UBIQUITI AP")):
+        return "access_point"
+    if any(x in text for x in ("PRINTER","LASERJET","JETDIRECT")) or 9100 in ports:
+        return "printer"
+    if any(x in text for x in ("PHONE","IPHONE","ANDROID","PIXEL")):
+        return "phone"
+    if any(x in text for x in ("WINDOWS","LINUX","MACOS","DESKTOP","LAPTOP","WORKSTATION")) or ports & {135,139,445,3389}:
+        return "workstation"
+    return None
+
 def normalize_mac(value:str|None)->str|None:
     if not value:return None
     compact=re.sub(r"[^0-9A-Fa-f]","",value)
