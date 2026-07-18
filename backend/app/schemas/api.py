@@ -57,6 +57,7 @@ class ProbeCreate(BaseModel):
 class ProbeHeartbeat(BaseModel):
     version: str = Field(max_length=40)
     capabilities: list[str] = Field(min_length=1,max_length=10)
+    reachable_networks: list[str] = Field(default_factory=list,max_length=256)
 
 class ProbeFact(BaseModel):
     field: str = Field(min_length=1,max_length=80)

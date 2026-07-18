@@ -10,6 +10,21 @@ URL=os.environ["NETSCOPE_URL"].rstrip("/")+"/api/v1";TOKEN=os.environ["PROBE_TOK
 POLL=max(int(os.getenv("POLL_SECONDS","5")),2);VERIFY=os.getenv("VERIFY_TLS","true").lower() not in ("0","false","no")
 PLUGINS={plugin.name:plugin for plugin in (IcmpPlugin(),ArpPlugin(),NmapPlugin(),DNSPlugin())}
 
+def reachable_networks():
+    """Return kernel routes visible from the probe without running a shell."""
+    networks=set()
+    try:
+        with open("/proc/net/route",encoding="ascii") as routes:
+            next(routes,None)
+            for line in routes:
+                fields=line.split()
+                if len(fields)<8 or not int(fields[3],16)&1:continue
+                address=int(fields[1],16).to_bytes(4,"little");mask=int(fields[7],16).to_bytes(4,"little")
+                networks.add(str(ipaddress.ip_network((str(ipaddress.ip_address(address)),str(ipaddress.ip_address(mask))),strict=False)))
+    except (OSError,ValueError):log.exception("route_inventory_failed")
+    networks.discard("0.0.0.0/0")
+    return sorted(networks,key=lambda value:int(ipaddress.ip_network(value).network_address))
+
 def targets(module,target,discovered):
     if module=="dns" and "/" in target:
         if discovered:return sorted(discovered,key=lambda x:int(ipaddress.ip_address(x)))
@@ -32,7 +47,7 @@ async def main():
     async with httpx.AsyncClient(base_url=URL,headers=headers,verify=VERIFY,timeout=120) as client:
         while True:
             try:
-                response=await client.post("/probe/heartbeat",json={"version":"1.0.0","capabilities":capabilities});response.raise_for_status()
+                response=await client.post("/probe/heartbeat",json={"version":"1.1.0","capabilities":capabilities,"reachable_networks":reachable_networks()});response.raise_for_status()
                 response=await client.get("/probe/tasks/next")
                 if response.status_code==204:await asyncio.sleep(POLL);continue
                 response.raise_for_status();task=response.json();log.info("task_started id=%s target=%s",task["id"],task["target"])

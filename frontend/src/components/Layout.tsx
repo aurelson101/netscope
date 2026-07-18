@@ -108,7 +108,7 @@ export function Layout({
           )}
         </nav>
         <div className="asideFoot">
-          <span>NetScope v0.0.2</span>
+          <span>NetScope v0.0.3</span>
         </div>
       </aside>
       <main>

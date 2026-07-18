@@ -215,6 +215,7 @@ class Probe(Base):
     vrf_id: Mapped[str | None] = mapped_column(ForeignKey("vrfs.id"), index=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     capabilities: Mapped[list] = mapped_column(JSON,default=list)
+    reachable_networks: Mapped[list] = mapped_column(JSON,default=list)
     version: Mapped[str | None] = mapped_column(String(40))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_ip: Mapped[str | None] = mapped_column(String(64))
