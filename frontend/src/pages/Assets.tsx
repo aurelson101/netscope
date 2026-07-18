@@ -179,7 +179,7 @@ export function Assets() {
                 <td className="mono">
                   {a.identifiers.find((x) => x.kind === "mac")?.value || "—"}
                 </td>
-                <td>{a.manufacturer || "—"}</td>
+                <td>{a.manufacturer || (() => { const mac = a.identifiers.find((x) => x.kind === "mac")?.value; const local = mac && ((parseInt(mac.replace(/:/g, "").slice(0, 2), 16) & 2) !== 0); return local ? "MAC privée / randomisée" : "—"; })()}</td>
                 <td>
                   <span className="tag">{a.device_type}</span>
                 </td>
