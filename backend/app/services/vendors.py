@@ -54,10 +54,33 @@ def is_private_mac(value:str|None)->bool:
 
 @lru_cache
 def offline_oui()->dict[str,str]:
+    """Load the local catalog, enriched with Nmap's maintained MAC prefixes.
+
+    The bundled CSV remains the first source (it may contain local overrides),
+    while the system Nmap database provides thousands of additional vendors.
+    """
+    result: dict[str, str] = {}
     path=Path(__file__).parents[3]/"data"/"oui"/"oui.csv"
     if not path.exists():path=Path(__file__).parents[1]/"data"/"oui.csv"
-    if not path.exists():return {}
-    with path.open(encoding="utf-8") as handle:return {row["prefix"].upper():row["vendor"] for row in csv.DictReader(handle)}
+    if path.exists():
+        with path.open(encoding="utf-8") as handle:
+            result.update({row["prefix"].replace(":", "").upper():row["vendor"].strip()
+                           for row in csv.DictReader(handle)
+                           if row.get("prefix") and row.get("vendor")})
+
+    # Debian/Ubuntu and the official Nmap image install this at this path.
+    nmap_path = Path("/usr/share/nmap/nmap-mac-prefixes")
+    if nmap_path.exists():
+        with nmap_path.open(encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                line=line.strip()
+                if not line or line.startswith("#") or " " not in line:
+                    continue
+                prefix, vendor = line.split(None, 1)
+                prefix=prefix.replace(":", "").upper()
+                if len(prefix) >= 6 and vendor.strip():
+                    result.setdefault(prefix[:6], vendor.strip())
+    return result
 
 def vendor_from_mac(value:str|None)->str|None:
     mac=normalize_mac(value)

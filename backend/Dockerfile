@@ -1,7 +1,7 @@
 FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends gosu \
+    && apt-get install -y --no-install-recommends gosu nmap-common \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -r netscope \
     && useradd -r -g netscope netscope
